@@ -1,0 +1,381 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infouno\SaaS\API;
+
+use Infouno\SaaS\Bot\BotManager;
+use Infouno\SaaS\Chat\ConversationRepository;
+
+/**
+ * Registro server-side de consentimiento — Ley 25.326 Argentina.
+ *
+ * Guarda evidencia legal del momento en que el usuario aceptó el aviso,
+ * sin almacenar datos personales identificables directamente:
+ *   - session_hash: SHA-256 del session_id (no reversible)
+ *   - ip_hash:      SHA-256 de la IP (no reversible)
+ *   - user_agent_hash: SHA-256 del User-Agent
+ *
+ * Esto cumple el principio de minimización de datos (Art. 4, Ley 25.326)
+ * y permite demostrar que el consentimiento existió si es cuestionado.
+ */
+final class ConsentController {
+
+    public function __construct(
+        private readonly BotManager             $botManager,
+        private readonly ConversationRepository $conversationRepo,
+    ) {}
+
+    public function registerRoutes( string $namespace ): void {
+        register_rest_route( $namespace, '/consent', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'record' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'bot_token' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( $v ) === 64,
+                ],
+                'session_id' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( trim( $v ) ) >= 8,
+                ],
+            ],
+        ] );
+
+        register_rest_route( $namespace, '/consent/revoke', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'revoke' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'bot_token' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( $v ) === 64,
+                ],
+                'session_id' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( trim( $v ) ) >= 8,
+                ],
+            ],
+        ] );
+
+        register_rest_route( $namespace, '/consent/lead', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'recordLead' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'bot_token' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( $v ) === 64,
+                ],
+                'session_id' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => static fn( $v ) => strlen( trim( $v ) ) >= 8,
+                ],
+                'scopes' => [
+                    'type'              => 'object',
+                    'required'          => true,
+                    'properties'        => [
+                        'name'  => [ 'type' => 'boolean' ],
+                        'phone' => [ 'type' => 'boolean' ],
+                        'email' => [ 'type' => 'boolean' ],
+                    ],
+                    'validate_callback' => static function ( $v ): bool {
+                        $v = (array) $v;
+                        return ! empty( $v['name'] ) || ! empty( $v['phone'] ) || ! empty( $v['email'] );
+                    },
+                ],
+            ],
+        ] );
+    }
+
+    /**
+     * Registra el consentimiento general de chat en wp_infouno_consents (scope='chat').
+     * Idempotente: si ya existe un registro de chat para esta sesión + bot, retorna 200 sin duplicar.
+     */
+    public function record( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+        global $wpdb;
+
+        $botToken  = $request->get_param( 'bot_token' );
+        $sessionId = $request->get_param( 'session_id' );
+        $origin    = sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ?? '' ) );
+
+        $bot = $this->botManager->getByPublicToken( $botToken );
+        if ( ! $bot ) {
+            return new \WP_Error( 'bot_not_found', 'Bot no encontrado.', [ 'status' => 404 ] );
+        }
+
+        if ( ! $this->botManager->validateOrigin( $bot, $origin ) ) {
+            return new \WP_Error( 'origin_not_allowed', 'Origen no autorizado.', [ 'status' => 403 ] );
+        }
+
+        $botId    = (int) $bot['id'];
+        $tenantId = (int) $bot['tenant_id'];
+        $table    = $wpdb->prefix . 'infouno_consents';
+        $hashes   = $this->buildHashes( $sessionId );
+
+        // Filtra por scope='chat' para no confundir con filas de lead_capture.
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM `{$table}` WHERE bot_id = %d AND session_hash = %s AND scope = 'chat' LIMIT 1",
+                $botId,
+                $hashes['session']
+            )
+        );
+
+        if ( $exists ) {
+            return new \WP_REST_Response( [ 'recorded' => false, 'reason' => 'already_consented' ], 200 );
+        }
+
+        $wpdb->insert(
+            $table,
+            [
+                'bot_id'          => $botId,
+                'tenant_id'       => $tenantId,
+                'session_hash'    => $hashes['session'],
+                'consent_version' => defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0',
+                'scope'           => 'chat',
+                'ip_hash'         => $hashes['ip'],
+                'user_agent_hash' => $hashes['ua'],
+            ],
+            [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+        );
+
+        return new \WP_REST_Response( [ 'recorded' => true ], 201 );
+    }
+
+    /**
+     * POST /infouno/v1/consent/lead
+     *
+     * Registra el consentimiento granular para captura de datos PII (nombre, teléfono, email)
+     * en wp_infouno_lead_consents. También registra scope='lead_capture' en wp_infouno_consents
+     * como evidencia legal independiente (Ley 25.326, Art. 6).
+     *
+     * Idempotente: si ya existe un registro para esta sesión + bot, retorna 200 sin duplicar.
+     */
+    public function recordLead( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+        global $wpdb;
+
+        $botToken  = $request->get_param( 'bot_token' );
+        $sessionId = $request->get_param( 'session_id' );
+        $scopes    = (array) $request->get_param( 'scopes' );
+        $origin    = sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ?? '' ) );
+
+        $bot = $this->botManager->getByPublicToken( $botToken );
+        if ( ! $bot ) {
+            return new \WP_Error( 'bot_not_found', 'Bot no encontrado.', [ 'status' => 404 ] );
+        }
+
+        if ( ! $this->botManager->validateOrigin( $bot, $origin ) ) {
+            return new \WP_Error( 'origin_not_allowed', 'Origen no autorizado.', [ 'status' => 403 ] );
+        }
+
+        $botId    = (int) $bot['id'];
+        $tenantId = (int) $bot['tenant_id'];
+        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
+        $hashes   = $this->buildHashes( $sessionId );
+
+        $tableLeadConsents = $wpdb->prefix . 'infouno_lead_consents';
+
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM `{$tableLeadConsents}` WHERE bot_id = %d AND session_hash = %s LIMIT 1",
+                $botId,
+                $hashes['session']
+            )
+        );
+
+        if ( $exists ) {
+            return new \WP_REST_Response( [ 'recorded' => false, 'reason' => 'already_consented' ], 200 );
+        }
+
+        $wpdb->insert(
+            $tableLeadConsents,
+            [
+                'tenant_id'         => $tenantId,
+                'bot_id'            => $botId,
+                'session_hash'      => $hashes['session'],
+                'can_capture_name'  => (int) ! empty( $scopes['name'] ),
+                'can_capture_phone' => (int) ! empty( $scopes['phone'] ),
+                'can_capture_email' => (int) ! empty( $scopes['email'] ),
+                'consent_version'   => $version,
+                'ip_hash'           => $hashes['ip'],
+                'user_agent_hash'   => $hashes['ua'],
+            ],
+            [ '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s', '%s' ]
+        );
+
+        // Registrar evidencia en wp_infouno_consents con scope='lead_capture'.
+        // Proporciona un segundo registro legal independiente de wp_infouno_lead_consents.
+        $tableConsents = $wpdb->prefix . 'infouno_consents';
+        $auditExists   = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM `{$tableConsents}` WHERE bot_id = %d AND session_hash = %s AND scope = 'lead_capture' LIMIT 1",
+                $botId,
+                $hashes['session']
+            )
+        );
+
+        if ( ! $auditExists ) {
+            $wpdb->insert(
+                $tableConsents,
+                [
+                    'bot_id'          => $botId,
+                    'tenant_id'       => $tenantId,
+                    'session_hash'    => $hashes['session'],
+                    'consent_version' => $version,
+                    'scope'           => 'lead_capture',
+                    'ip_hash'         => $hashes['ip'],
+                    'user_agent_hash' => $hashes['ua'],
+                ],
+                [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+            );
+        }
+
+        return new \WP_REST_Response( [ 'recorded' => true ], 201 );
+    }
+
+    /**
+     * POST /infouno/v1/consent/revoke
+     *
+     * Derecho de supresión completo — Art. 16, Ley 25.326 Argentina.
+     *
+     * Cubre el gap que deja DELETE /session: ese endpoint anonimiza mensajes
+     * pero deja PII en wp_infouno_leads intacta. Este endpoint completa la
+     * supresión en todas las tablas que contienen datos del usuario:
+     *
+     *   1. Mensajes + conversaciones → deleteSession() (anonimiza/soft-delete)
+     *   2. Leads PII → name/phone/email → NULL en wp_infouno_leads
+     *   3. Consent flags → can_capture_* = 0 en wp_infouno_lead_consents
+     *   4. Audit trail → INSERT scope='consent_revoked' en wp_infouno_consents
+     *
+     * El registro de consentimiento original (accepted_at, ip_hash, etc.) se preserva
+     * como evidencia legal — solo se añade el registro de revocación.
+     */
+    public function revoke( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+        global $wpdb;
+
+        $botToken  = $request->get_param( 'bot_token' );
+        $sessionId = $request->get_param( 'session_id' );
+        $origin    = sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ?? '' ) );
+
+        $bot = $this->botManager->getByPublicToken( $botToken );
+        if ( ! $bot ) {
+            return new \WP_Error( 'bot_not_found', 'Bot no encontrado.', [ 'status' => 404 ] );
+        }
+
+        if ( ! $this->botManager->validateOrigin( $bot, $origin ) ) {
+            return new \WP_Error( 'origin_not_allowed', 'Origen no autorizado.', [ 'status' => 403 ] );
+        }
+
+        $botId    = (int) $bot['id'];
+        $tenantId = (int) $bot['tenant_id'];
+        $hashes   = $this->buildHashes( $sessionId );
+
+        // 1. Anonimizar mensajes y conversaciones (manejo del gap pre-existente también)
+        $messagesProcessed = $this->conversationRepo->deleteSession( $sessionId, $tenantId );
+
+        // 2. Anonimizar PII en leads — la supresión de datos es el derecho central del Art. 16
+        $tableLeads = $wpdb->prefix . 'infouno_leads';
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE `{$tableLeads}`
+                 SET name = NULL, phone = NULL, email = NULL
+                 WHERE session_hash = %s AND tenant_id = %d",
+                $hashes['session'],
+                $tenantId
+            )
+        );
+
+        // 3. Desactivar flags de captura futura — el usuario no puede ser registrado de nuevo
+        //    sin un nuevo ciclo de consentimiento explícito.
+        $tableLeadConsents = $wpdb->prefix . 'infouno_lead_consents';
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE `{$tableLeadConsents}`
+                 SET can_capture_name = 0, can_capture_phone = 0, can_capture_email = 0
+                 WHERE session_hash = %s AND bot_id = %d",
+                $hashes['session'],
+                $botId
+            )
+        );
+
+        // 4. Registrar la revocación como audit trail inmutable.
+        //    El registro original (accepted_at, ip_hash, ua_hash) se preserva — es
+        //    evidencia de que el consentimiento existió. Este nuevo registro certifica cuándo
+        //    fue revocado, cumpliendo el principio de trazabilidad.
+        $tableConsents = $wpdb->prefix . 'infouno_consents';
+        $auditExists   = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM `{$tableConsents}`
+                 WHERE bot_id = %d AND session_hash = %s AND scope = 'consent_revoked' LIMIT 1",
+                $botId,
+                $hashes['session']
+            )
+        );
+
+        if ( ! $auditExists ) {
+            $wpdb->insert(
+                $tableConsents,
+                [
+                    'bot_id'          => $botId,
+                    'tenant_id'       => $tenantId,
+                    'session_hash'    => $hashes['session'],
+                    'consent_version' => defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0',
+                    'scope'           => 'consent_revoked',
+                    'ip_hash'         => $hashes['ip'],
+                    'user_agent_hash' => $hashes['ua'],
+                ],
+                [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+            );
+        }
+
+        error_log( sprintf(
+            '[INFOUNO] Consent revoked. Tenant: %d, Bot: %d, Session hash: %s',
+            $tenantId,
+            $botId,
+            substr( $hashes['session'], 0, 12 )
+        ) );
+
+        return new \WP_REST_Response(
+            [
+                'revoked'            => true,
+                'messages_processed' => $messagesProcessed,
+                'message'            => 'Tus datos personales han sido eliminados conforme al Art. 16 de la Ley 25.326.',
+            ],
+            200
+        );
+    }
+
+    /**
+     * Calcula los tres hashes de evidencia legal sin almacenar datos personales directamente.
+     *
+     * @return array{session: string, ip: string, ua: string}
+     */
+    private function buildHashes( string $sessionId ): array {
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+        $rawIp = $_SERVER['HTTP_CF_CONNECTING_IP']
+              ?? $_SERVER['HTTP_X_REAL_IP']
+              ?? $_SERVER['REMOTE_ADDR']
+              ?? '';
+
+        return [
+            'session' => hash( 'sha256', $sessionId ),
+            'ip'      => hash( 'sha256', trim( (string) $rawIp ) ),
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+            'ua'      => hash( 'sha256', (string) ( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ),
+        ];
+    }
+}

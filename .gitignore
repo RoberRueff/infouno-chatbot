@@ -1,0 +1,96 @@
+# ==========================================
+# Secretos y Entorno
+# ==========================================
+.env
+.env.*
+!.env.example
+wp-config.php
+*.pem
+*.key
+
+# ==========================================
+# PHP / Composer
+# ==========================================
+plugins/infouno-custom/vendor/
+composer.lock
+
+# ==========================================
+# Node / NPM — Widget
+# ==========================================
+plugins/infouno-custom/client-widget/node_modules/
+plugins/infouno-custom/client-widget/dist/
+
+# ==========================================
+# Build & Compilación
+# ==========================================
+*.tsbuildinfo
+*.map
+
+# ==========================================
+# WordPress
+# ==========================================
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/advanced-cache.php
+wp-content/object-cache.php
+
+# ==========================================
+# Logs y Debugging
+# ==========================================
+*.log
+logs/
+debug.log
+php_errors.log
+
+# ==========================================
+# Bases de Datos Locales
+# ==========================================
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================
+# Cache y Temporales
+# ==========================================
+.cache/
+tmp/
+temp/
+*.tmp
+*.bak
+*.old
+*.swp
+
+# ==========================================
+# Tests y Cobertura
+# ==========================================
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ==========================================
+# IDE
+# ==========================================
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+
+# ==========================================
+# OS
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# Claude Code
+# ==========================================
+.claude/cache/
+.claude/history/
+
+# ==========================================
+# Backups y Exportaciones
+# ==========================================
+exports/
+backups/

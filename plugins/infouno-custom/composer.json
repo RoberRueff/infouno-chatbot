@@ -1,0 +1,32 @@
+{
+    "name": "infouno/saas-chatbot",
+    "description": "Core engine del SaaS Multitenant de Chatbots.",
+    "type": "wordpress-plugin",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^3.9",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Infouno\\SaaS\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Infouno\\SaaS\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "package-lint":   "phpcs --standard=PSR12 src/",
+        "package-format": "phpcbf --standard=PSR12 src/",
+        "test":           "phpunit --testdox"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

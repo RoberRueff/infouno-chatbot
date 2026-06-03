@@ -1,0 +1,540 @@
+/* Todos los selectores viven dentro del Shadow DOM — no contaminan el host */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Botón FAB ─────────────────────────────────────── */
+.iw-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: #4F46E5;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(79,70,229,.45);
+  transition: transform .15s ease, background .15s ease;
+}
+
+.iw-btn:hover  { background: #4338CA; transform: scale(1.06); }
+.iw-btn:active { transform: scale(.96); }
+.iw-btn--open  { background: #6B7280; box-shadow: none; }
+
+/* ── Ventana de chat ────────────────────────────────── */
+.iw-window {
+  position: absolute;
+  bottom: 68px;
+  right: 0;
+  width: 340px;
+  max-height: 520px;
+  border-radius: 16px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+.iw-header {
+  padding: 14px 16px;
+  background: #4F46E5;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.iw-header__title { font-weight: 600; font-size: 15px; }
+
+.iw-status {
+  font-size: 11px;
+  opacity: .75;
+}
+
+.iw-status--active {
+  opacity: 1;
+  color: #A5F3FC;
+}
+
+.iw-status--retrying {
+  opacity: 1;
+  color: #FCD34D;
+}
+
+/* ── Lista de mensajes ───────────────────────────────── */
+.iw-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #D1D5DB transparent;
+}
+
+.iw-welcome {
+  text-align: center;
+  color: #9CA3AF;
+  font-size: 13px;
+  padding: 24px 8px;
+}
+
+/* ── Burbujas ────────────────────────────────────────── */
+.iw-msg {
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.iw-msg--user {
+  align-self: flex-end;
+  background: #4F46E5;
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.iw-msg--assistant {
+  align-self: flex-start;
+  background: #F3F4F6;
+  color: #111827;
+  border-bottom-left-radius: 3px;
+}
+
+.iw-msg--error {
+  align-self: flex-start;
+  background: #FEE2E2;
+  color: #991B1B;
+  border-bottom-left-radius: 3px;
+}
+
+/* Cursor parpadeante mientras el asistente escribe */
+.iw-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: currentColor;
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink .8s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ── Input bar ───────────────────────────────────────── */
+.iw-input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #E5E7EB;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.iw-input {
+  flex: 1;
+  resize: none;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.4;
+  max-height: 100px;
+  overflow-y: auto;
+  outline: none;
+  color: #111827;
+  background: #F9FAFB;
+  transition: border-color .15s;
+}
+
+.iw-input:focus       { border-color: #4F46E5; background: #fff; }
+.iw-input:disabled    { opacity: .5; cursor: not-allowed; }
+
+.iw-send {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: #4F46E5;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s, opacity .15s;
+}
+
+.iw-send:hover    { background: #4338CA; }
+.iw-send:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Input — aviso de límite de caracteres ───────────── */
+.iw-input--over-limit { border-color: #EF4444 !important; }
+
+.iw-char-limit {
+  font-size: 11px;
+  color: #EF4444;
+  padding: 0 2px 4px;
+  display: block;
+  text-align: right;
+}
+
+/* ── Pantalla de consentimiento (Ley 25.326) ─────────── */
+.iw-consent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 20px 24px;
+  text-align: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #111827;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  position: absolute;
+  bottom: 68px;
+  right: 0;
+  width: 340px;
+}
+
+.iw-consent__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #EEF2FF;
+  color: #4F46E5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.iw-consent__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.iw-consent__body {
+  color: #374151;
+  margin: 0;
+}
+
+.iw-consent__legal {
+  font-size: 12px;
+  color: #6B7280;
+  margin: 0;
+  padding: 10px 12px;
+  background: #F9FAFB;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.iw-consent__btn {
+  width: 100%;
+  padding: 11px 16px;
+  background: #4F46E5;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: inherit;
+}
+
+.iw-consent__btn:hover  { background: #4338CA; }
+.iw-consent__btn:active { background: #3730A3; }
+
+/* ── Footer legal en el chat ─────────────────────────── */
+.iw-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid #F3F4F6;
+  flex-shrink: 0;
+}
+
+.iw-footer__link {
+  font-size: 11px;
+  color: #6B7280;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color .15s, text-decoration-color .15s;
+  font-family: inherit;
+}
+
+.iw-footer__link:hover {
+  color: #EF4444;
+  text-decoration-color: #EF4444;
+}
+
+.iw-footer__sep  { font-size: 11px; color: #D1D5DB; }
+.iw-footer__law  { font-size: 11px; color: #9CA3AF; }
+
+/* ── Confirmación de eliminación de datos ────────────── */
+.iw-delete-confirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.iw-delete-confirm__text {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.iw-delete-confirm__actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.iw-delete-confirm__btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+  font-family: inherit;
+}
+
+.iw-delete-confirm__btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.iw-delete-confirm__btn--cancel {
+  background: #F3F4F6;
+  color: #374151;
+}
+
+.iw-delete-confirm__btn--cancel:hover:not(:disabled) { background: #E5E7EB; }
+
+.iw-delete-confirm__btn--danger {
+  background: #EF4444;
+  color: #fff;
+}
+
+.iw-delete-confirm__btn--danger:hover:not(:disabled) { background: #DC2626; }
+
+/* ── Botones de acción inline (Lead Consent, Confirmaciones) ─ */
+/* Sobreescriben la forma circular del FAB .iw-btn cuando se usan con modificadores */
+.iw-btn--primary,
+.iw-btn--secondary {
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  box-shadow: none;
+}
+
+.iw-btn--primary {
+  background: #4F46E5;
+  color: #fff;
+}
+
+.iw-btn--primary:hover:not(:disabled)  { background: #4338CA; transform: none; }
+.iw-btn--primary:active:not(:disabled) { transform: none; }
+.iw-btn--primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.iw-btn--secondary {
+  background: #F3F4F6;
+  color: #374151;
+}
+
+.iw-btn--secondary:hover:not(:disabled)  { background: #E5E7EB; transform: none; }
+.iw-btn--secondary:active:not(:disabled) { transform: none; }
+.iw-btn--secondary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+/* ── Pantalla de consentimiento de lead (Lead Engine — Ley 25.326) ── */
+.iw-lead-consent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 18px;
+  overflow-y: auto;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #111827;
+}
+
+.iw-lead-consent__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.iw-lead-consent__description {
+  color: #374151;
+  margin: 0;
+}
+
+.iw-lead-consent__options {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.iw-lead-consent__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #E5E7EB;
+  background: #F9FAFB;
+  transition: background .12s, border-color .12s;
+  user-select: none;
+}
+
+.iw-lead-consent__option:has(input:checked) {
+  background: #EEF2FF;
+  border-color: #4F46E5;
+  color: #1e1b4b;
+}
+
+.iw-lead-consent__option input[type="checkbox"] {
+  accent-color: #4F46E5;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.iw-lead-consent__option span { flex: 1; }
+
+.iw-lead-consent__legal {
+  font-size: 11px;
+  color: #6B7280;
+  margin: 0;
+  padding: 8px 10px;
+  background: #F9FAFB;
+  border-radius: 6px;
+  border: 1px solid #E5E7EB;
+  line-height: 1.6;
+}
+
+.iw-lead-consent__link {
+  color: #4F46E5;
+  text-underline-offset: 2px;
+}
+
+.iw-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border-width: 0;
+}
+
+.iw-lead-consent__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.iw-lead-consent__actions .iw-btn {
+  flex: 1;
+}
+
+/* ── Botón de WhatsApp en footer ─────────────────────────── */
+.iw-footer__whatsapp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #16a34a;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  font-weight: 600;
+  transition: color .12s;
+}
+
+.iw-footer__whatsapp:hover { color: #15803d; }
+
+.iw-footer__whatsapp svg { width: 13px; height: 13px; }
+
+/* ── Respuestas rápidas (Quick Replies) ──────────────────── */
+.iw-quick-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 10px;
+  flex-shrink: 0;
+}
+
+.iw-quick-reply {
+  padding: 6px 12px;
+  background: #EEF2FF;
+  color: #4F46E5;
+  border: 1px solid #C7D2FE;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iw-quick-reply:hover:not(:disabled)  { background: #E0E7FF; border-color: #A5B4FC; }
+.iw-quick-reply:active:not(:disabled) { background: #C7D2FE; }
+.iw-quick-reply:disabled { opacity: .4; cursor: not-allowed; }

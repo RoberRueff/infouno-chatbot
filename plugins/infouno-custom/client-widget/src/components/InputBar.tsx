@@ -29,26 +29,28 @@ export function InputBar( { status, onSend }: Props ) {
 
   return (
     <div class="iw-input-bar">
-      <textarea
-        class={ `iw-input${ overLimit ? ' iw-input--over-limit' : '' }` }
-        rows={ 1 }
-        placeholder={
-          status === 'retrying'  ? 'Reconectando…'  :
-          busy                   ? 'Escribiendo...' :
-                                   'Escribe un mensaje…'
-        }
-        value={ text }
-        maxLength={ MAX_CHARS }
-        disabled={ busy }
-        onInput={ ( e ) => setText( ( e.target as HTMLTextAreaElement ).value ) }
-        onKeyDown={ handleKey }
-        aria-label="Mensaje"
-      />
-      { overLimit && (
-        <span class="iw-char-limit" role="alert">
-          Límite de { MAX_CHARS } caracteres alcanzado
-        </span>
-      ) }
+      <div class="iw-input-wrap">
+        <textarea
+          class={ `iw-input${ overLimit ? ' iw-input--over-limit' : '' }` }
+          rows={ 1 }
+          placeholder={
+            status === 'retrying'  ? 'Reconectando…'  :
+            busy                   ? 'Escribiendo...' :
+                                     'Escribe un mensaje…'
+          }
+          value={ text }
+          maxLength={ MAX_CHARS }
+          disabled={ busy }
+          onInput={ ( e ) => setText( ( e.target as HTMLTextAreaElement ).value ) }
+          onKeyDown={ handleKey }
+          aria-label="Mensaje"
+        />
+        { overLimit && (
+          <span class="iw-char-limit" role="alert">
+            Límite de { MAX_CHARS } caracteres alcanzado
+          </span>
+        ) }
+      </div>
       <button
         class="iw-send"
         onClick={ handleSubmit }

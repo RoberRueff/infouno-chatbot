@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS;
 
+use Infouno\SaaS\Admin\BotDashboard;
 use Infouno\SaaS\Admin\BotWizard;
 use Infouno\SaaS\Admin\LeadDashboard;
+use Infouno\SaaS\Admin\OpportunityDashboard;
 use Infouno\SaaS\API\LeadController;
 use Infouno\SaaS\API\OpportunityController;
 use Infouno\SaaS\API\RestRouter;
@@ -45,7 +47,9 @@ final class Plugin {
     private OpportunityService     $opportunityService;
     private AutomationEngine       $automationEngine;
     private RestRouter             $restRouter;
+    private BotDashboard           $botDashboard;
     private LeadDashboard          $leadDashboard;
+    private OpportunityDashboard   $opportunityDashboard;
     private BotWizard              $botWizard;
 
     private function __construct() {}
@@ -105,8 +109,10 @@ final class Plugin {
         );
 
         // ── Admin ────────────────────────────────────────────────────────────
-        $this->leadDashboard = new LeadDashboard( $this->tenantManager );
-        $this->botWizard     = new BotWizard( $this->botManager, $this->tenantManager );
+        $this->botDashboard         = new BotDashboard( $this->botManager, $this->tenantManager );
+        $this->leadDashboard        = new LeadDashboard( $this->tenantManager );
+        $this->opportunityDashboard = new OpportunityDashboard( $this->tenantManager, $this->opportunityRepo );
+        $this->botWizard            = new BotWizard( $this->botManager, $this->tenantManager );
 
         // Migración directa — no via hook porque plugins_loaded ya está disparado en este punto
         $this->maybeMigrate();
@@ -116,9 +122,15 @@ final class Plugin {
         add_action( 'init',          [ $this, 'registerRoles' ] );
         add_action( 'admin_menu',    [ $this, 'registerAdminMenu' ] );
 
+        // Bot Dashboard
+        $this->botDashboard->init();
+
         // Lead Engine
         $this->leadDashboard->init();
         add_action( 'infouno_lead_captured', [ $this, 'onLeadCaptured' ], 10, 4 );
+
+        // Opportunity Dashboard
+        $this->opportunityDashboard->init();
 
         // Opportunity Engine — prioridad 20 (posterior al email de notificación en prio 10)
         add_action( 'infouno_lead_captured', [ $this->opportunityService, 'onLeadCaptured' ], 20, 4 );
@@ -195,9 +207,17 @@ final class Plugin {
         echo '<tr><th>' . esc_html__( 'Reset de cuota', 'infouno-custom' ) . '</th>';
         echo '<td>' . esc_html( $tenant['quota_reset_at'] ?? '—' ) . '</td></tr>';
         echo '</tbody></table>';
-        echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=infouno-leads' ) ) . '" class="button button-primary">';
-        echo esc_html__( 'Ver Leads Capturados', 'infouno-custom' );
-        echo '</a></p>';
+        echo '<p>';
+        echo '<a href="' . esc_url( admin_url( 'admin.php?page=infouno-bots' ) ) . '" class="button button-primary">';
+        echo esc_html__( 'Mis Bots', 'infouno-custom' );
+        echo '</a> ';
+        echo '<a href="' . esc_url( admin_url( 'admin.php?page=infouno-leads' ) ) . '" class="button">';
+        echo esc_html__( 'Leads', 'infouno-custom' );
+        echo '</a> ';
+        echo '<a href="' . esc_url( admin_url( 'admin.php?page=infouno-opportunities' ) ) . '" class="button">';
+        echo esc_html__( 'Pipeline', 'infouno-custom' );
+        echo '</a>';
+        echo '</p>';
         echo '</div>';
     }
 

@@ -150,6 +150,45 @@ final class OpportunityRepository {
     }
 
     /**
+     * Métricas de pipeline para el tenant: conteos por stage y valor total activo.
+     * Calculado en tiempo real — no cachear para no mostrar datos desactualizados.
+     *
+     * @return array{total: int, by_stage: array<string,int>, pipeline_value: float, won_count: int, lost_count: int}
+     */
+    public function getPipelineMetrics( int $tenantId ): array {
+        global $wpdb;
+
+        $table   = $wpdb->prefix . 'infouno_opportunities';
+        $byStage = [];
+        $total   = 0;
+
+        foreach ( self::STAGES as $stage ) {
+            $count             = $this->countForTenant( $tenantId, $stage );
+            $byStage[ $stage ] = $count;
+            $total            += $count;
+        }
+
+        $pipelineValue = (float) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COALESCE(SUM(estimated_value), 0)
+                 FROM `{$table}`
+                 WHERE tenant_id = %d
+                   AND stage NOT IN ('won', 'lost')
+                   AND estimated_value IS NOT NULL",
+                $tenantId
+            )
+        );
+
+        return [
+            'total'          => $total,
+            'by_stage'       => $byStage,
+            'pipeline_value' => $pipelineValue,
+            'won_count'      => $byStage['won']  ?? 0,
+            'lost_count'     => $byStage['lost'] ?? 0,
+        ];
+    }
+
+    /**
      * Cambia el stage de una oportunidad.
      *
      * Guardrail: won/lost son terminales — no se pueden cambiar una vez alcanzados.

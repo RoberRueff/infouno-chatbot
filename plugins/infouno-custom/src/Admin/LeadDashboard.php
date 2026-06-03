@@ -15,13 +15,14 @@ final class LeadDashboard {
 
     private const NONCE_EXPORT  = 'infouno_export_leads';
     private const NONCE_STATUS  = 'infouno_update_lead_status';
-    private const VALID_STATUSES = [ 'new', 'contacted', 'converted', 'lost' ];
+    private const VALID_STATUSES = [ 'new', 'contacted', 'interested', 'converted', 'lost' ];
 
     private const STATUS_LABELS = [
-        'new'       => 'Nuevo',
-        'contacted' => 'Contactado',
-        'converted' => 'Convertido',
-        'lost'      => 'Perdido',
+        'new'        => 'Nuevo',
+        'contacted'  => 'Contactado',
+        'interested' => 'Interesado',
+        'converted'  => 'Convertido',
+        'lost'       => 'Perdido',
     ];
 
     public function __construct(

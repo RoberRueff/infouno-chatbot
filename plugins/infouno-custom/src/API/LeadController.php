@@ -12,13 +12,13 @@ use Infouno\SaaS\Tenant\TenantManager;
  * Rutas registradas bajo /infouno/v1/:
  *   GET  /leads              — Listado paginado de leads del tenant autenticado.
  *   GET  /leads/export       — Descarga CSV de leads (via admin-post, ver LeadDashboard).
- *   PUT  /leads/{id}/status  — Actualiza estado de un lead (new/contacted/converted/lost).
+ *   PUT  /leads/{id}/status  — Actualiza estado de un lead (new/contacted/interested/converted/lost).
  *
  * Toda query filtra por tenant_id derivado de la sesión WP — nunca del request.
  */
 final class LeadController {
 
-    private const VALID_STATUSES = [ 'new', 'contacted', 'converted', 'lost' ];
+    private const VALID_STATUSES = [ 'new', 'contacted', 'interested', 'converted', 'lost' ];
 
     public function __construct(
         private readonly TenantManager $tenantManager,

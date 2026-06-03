@@ -1,4 +1,3 @@
-import { h, Fragment } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import type { Message } from '../types'
 

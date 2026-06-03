@@ -160,37 +160,6 @@ final class OpportunityService {
      * Calcula en tiempo real desde la BD (R14 de commercial-data-integrity.md).
      */
     public function getPipelineMetrics( int $tenantId ): array {
-        $metrics = [
-            'total'         => 0,
-            'by_stage'      => [],
-            'pipeline_value' => 0.0,
-            'won_count'     => 0,
-            'lost_count'    => 0,
-        ];
-
-        foreach ( OpportunityRepository::STAGES as $stage ) {
-            $count = $this->repository->countForTenant( $tenantId, $stage );
-            $metrics['by_stage'][ $stage ] = $count;
-            $metrics['total']             += $count;
-        }
-
-        $metrics['won_count']  = $metrics['by_stage']['won']  ?? 0;
-        $metrics['lost_count'] = $metrics['by_stage']['lost'] ?? 0;
-
-        // Valor de pipeline = suma de estimated_value en stages activos (excluye won y lost)
-        global $wpdb;
-        $table = $wpdb->prefix . 'infouno_opportunities';
-        $metrics['pipeline_value'] = (float) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COALESCE(SUM(estimated_value), 0)
-                 FROM `{$table}`
-                 WHERE tenant_id = %d
-                   AND stage NOT IN ('won', 'lost')
-                   AND estimated_value IS NOT NULL",
-                $tenantId
-            )
-        );
-
-        return $metrics;
+        return $this->repository->getPipelineMetrics( $tenantId );
     }
 }

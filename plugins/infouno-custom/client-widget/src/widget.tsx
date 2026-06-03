@@ -23,8 +23,6 @@ interface Props {
 export function Widget( { config }: Props ) {
   const hostRef   = useRef<HTMLDivElement>( null )
   const shadowRef = useRef<ShadowRoot | null>( null )
-  const [ mounted, setMounted ] = useState( false )
-
   useEffect( () => {
     const el = hostRef.current
     if ( ! el || shadowRef.current ) return
@@ -40,7 +38,6 @@ export function Widget( { config }: Props ) {
     shadow.appendChild( container )
 
     render( h( ChatTree, { config } ), container )
-    setMounted( true )
 
     return () => {
       render( null, container )
@@ -120,12 +117,14 @@ function ChatSession( { config, onDeleted }: SessionProps ) {
 
   if ( showLeadConsent ) {
     return (
-      <LeadConsentScreen
-        privacyUrl={ config.privacyUrl }
-        isSubmitting={ isSubmittingConsent }
-        onAccept={ handleLeadAccept }
-        onSkip={ handleLeadSkip }
-      />
+      <div class="iw-window">
+        <LeadConsentScreen
+          privacyUrl={ config.privacyUrl }
+          isSubmitting={ isSubmittingConsent }
+          onAccept={ handleLeadAccept }
+          onSkip={ handleLeadSkip }
+        />
+      </div>
     )
   }
 

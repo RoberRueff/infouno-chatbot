@@ -4,6 +4,17 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Permite a PHPUnit doblar clases declaradas `final` (sin tocar el código de
+// producción). Solo afecta el runtime de tests. Debe ir antes de cargar clases.
+if ( class_exists( \DG\BypassFinals::class ) ) {
+    \DG\BypassFinals::enable();
+}
+
+// Constantes de WordPress usadas por las clases bajo test (no se carga WP).
+if ( ! defined( 'ARRAY_A' ) ) {
+    define( 'ARRAY_A', 'ARRAY_A' );
+}
+
 /**
  * Stubs mínimos de funciones WordPress para tests unitarios.
  * Solo se definen las funciones que usan las clases bajo test.

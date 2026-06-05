@@ -89,4 +89,27 @@ class WpdbStub {
     }
 }
 
+if ( ! function_exists( 'get_transient' ) ) {
+    function get_transient( string $key ): mixed {
+        return $GLOBALS['__infouno_transients'][ $key ] ?? false;
+    }
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+    function set_transient( string $key, mixed $value, int $ttl = 0 ): bool {
+        $GLOBALS['__infouno_transients'][ $key ] = $value;
+        return true;
+    }
+}
+
+if ( ! function_exists( 'get_option' ) ) {
+    function get_option( string $key, mixed $default = false ): mixed {
+        return $GLOBALS['__infouno_options'][ $key ] ?? $default;
+    }
+}
+
+if ( ! isset( $GLOBALS['__infouno_transients'] ) ) {
+    $GLOBALS['__infouno_transients'] = [];
+}
+
 $GLOBALS['wpdb'] = new WpdbStub();

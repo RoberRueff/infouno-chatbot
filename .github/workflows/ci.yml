@@ -93,3 +93,7 @@ jobs:
             if (empty($col)) { fwrite(STDERR, "FALTA columna conversations.channel (bug fresh-install)\n"); exit(1); }
             echo "load-test OK: plugin activo, migracion v9, columnas de canal presentes\n";
           '
+
+      - name: Runtime check (cadena comercial + terminalidad + paneles admin)
+        working-directory: ${{ github.workspace }}
+        run: wp eval-file "$GITHUB_WORKSPACE/smoke-test/runtime-check.php" --path=/tmp/wp

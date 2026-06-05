@@ -49,6 +49,31 @@ final class ChannelRepository {
     }
 
     /**
+     * Resuelve un canal por su id (el worker recibe el channel_id ya resuelto).
+     * @return array<string,mixed>|null
+     */
+    public function resolveByRoutingKeyId( int $channelId ): ?array {
+        global $wpdb;
+        $table = $this->table();
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $row = $wpdb->get_row(
+            $wpdb->prepare( "SELECT * FROM `{$table}` WHERE id = %d AND status = 'active' LIMIT 1", $channelId ),
+            ARRAY_A
+        );
+
+        if ( ! is_array( $row ) ) {
+            return null;
+        }
+
+        $row['credentials_decrypted'] = '' !== (string) ( $row['credentials'] ?? '' )
+            ? $this->vault->decryptArray( (string) $row['credentials'] )
+            : [];
+
+        return $row;
+    }
+
+    /**
      * Crea una conexión de canal. Cifra las credenciales antes de persistir.
      * @param array<string,mixed> $credentials
      */

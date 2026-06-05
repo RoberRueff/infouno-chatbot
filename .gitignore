@@ -94,3 +94,9 @@ desktop.ini
 # ==========================================
 exports/
 backups/
+
+# ==========================================
+# Artefactos de build / test
+# ==========================================
+plugins/infouno-custom.zip
+plugins/infouno-custom/.phpunit.result.cache

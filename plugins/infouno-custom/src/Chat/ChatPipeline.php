@@ -95,6 +95,11 @@ final class ChatPipeline {
         // 8. Stream al sink — acumula la respuesta completa para persistirla.
         //    Reconcilia la reserva con el consumo real; libera si el request falla.
         $fullResponse = '';
+
+        // El único punto que justifica liberar la reserva es que el LLM NO haya
+        // consumido tokens (falló). Si el LLM tuvo éxito, los tokens ya se gastaron:
+        // se cobran (reconcile) ANTES de persistir, para que un fallo de saveExchange
+        // no devuelva la cuota (sería una respuesta gratis).
         try {
             $result = $this->llmRouter->stream(
                 $bot,
@@ -105,28 +110,28 @@ final class ChatPipeline {
                 },
                 $tenantPlan
             );
-            $sink->finish();
-
-            // Conteo real; si el proveedor no devolvió usage pero hubo texto, estimar.
-            $actual = $result->totalTokens();
-            if ( 0 === $actual && '' !== trim( $fullResponse ) ) {
-                $actual = TokenEstimator::estimateMessages( $messages ) + TokenEstimator::estimate( $fullResponse );
-            }
-
-            $this->conversationRepo->saveExchange(
-                $convId,
-                $userMessage,
-                $fullResponse,
-                $result->inputTokens,
-                $result->outputTokens,
-                $tenantPlan
-            );
-
-            $this->tenantManager->reconcile( $tenantId, $estimate, $actual );
         } catch ( \Throwable $e ) {
             $this->tenantManager->release( $tenantId, $estimate );
             throw $e;
         }
+        $sink->finish();
+
+        // Conteo real; si el proveedor no devolvió usage pero hubo texto, estimar.
+        $actual = $result->totalTokens();
+        if ( 0 === $actual && '' !== trim( $fullResponse ) ) {
+            $actual = TokenEstimator::estimateMessages( $messages ) + TokenEstimator::estimate( $fullResponse );
+        }
+
+        $this->tenantManager->reconcile( $tenantId, $estimate, $actual );
+
+        $this->conversationRepo->saveExchange(
+            $convId,
+            $userMessage,
+            $fullResponse,
+            $result->inputTokens,
+            $result->outputTokens,
+            $tenantPlan
+        );
 
         // 9. Lead Engine — best-effort, nunca interrumpe el chat
         if ( null !== $this->leadService ) {

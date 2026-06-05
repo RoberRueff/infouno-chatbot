@@ -59,10 +59,18 @@ final class TelegramAdapter implements ChannelAdapterInterface {
         $url = self::API_BASE . '/bot' . $token . '/sendMessage';
 
         foreach ( $this->splitMessage( $text ) as $chunk ) {
-            $this->http->postJson( $url, [], [
+            $response = $this->http->postJson( $url, [], [
                 'chat_id' => is_numeric( $externalUser ) ? (int) $externalUser : $externalUser,
                 'text'    => $chunk,
             ] );
+
+            // Logueamos fallos de envío saliente (5xx, timeout=0) pero NO lanzamos:
+            // re-lanzar reintentaría todo el job y re-cobraría tokens del LLM.
+            // No incluir token ni texto en el log.
+            $code = (int) ( $response['code'] ?? 0 );
+            if ( 0 === $code || $code >= 400 ) {
+                error_log( '[INFOUNO-CHANNEL] Telegram sendMessage falló: HTTP ' . $code );
+            }
         }
     }
 

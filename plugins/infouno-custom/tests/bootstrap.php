@@ -88,7 +88,13 @@ class WpdbStub {
         return $this->stub_get_results;
     }
 
+    /** @var callable|null */
+    public $onInsert = null;
+
     public function insert( string $table, array $data, array $formats = [] ): int|false {
+        if ( is_callable( $this->onInsert ) ) {
+            ( $this->onInsert )( $table, $data );
+        }
         $this->insert_id = 1;
         return 1;
     }

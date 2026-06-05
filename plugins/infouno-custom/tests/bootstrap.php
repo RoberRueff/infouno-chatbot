@@ -15,6 +15,10 @@ if ( ! defined( 'ARRAY_A' ) ) {
     define( 'ARRAY_A', 'ARRAY_A' );
 }
 
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+    define( 'DAY_IN_SECONDS', 86400 );
+}
+
 /**
  * Stubs mínimos de funciones WordPress para tests unitarios.
  * Solo se definen las funciones que usan las clases bajo test.
@@ -91,6 +95,12 @@ class WpdbStub {
 
     public function update( string $table, array $data, array $where, array $formats = [], array $whereFormats = [] ): int|false {
         return 1;
+    }
+
+    public mixed $stub_query_result = 0;
+
+    public function query( string $query ): mixed {
+        return $this->stub_query_result;
     }
 }
 

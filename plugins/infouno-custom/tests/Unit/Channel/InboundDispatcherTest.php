@@ -58,4 +58,60 @@ final class InboundDispatcherTest extends TestCase {
 
         $this->assertSame( [ [ '55', 'Respuesta IA' ] ], $sent );
     }
+
+    /**
+     * @param array<string,mixed> $sent
+     */
+    private function makeDispatcher( ChatPipeline $pipeline, array &$sent ): InboundDispatcher {
+        $adapter  = $this->adapterThatSends( $sent );
+        $registry = new ChannelRegistry();
+        $registry->register( $adapter );
+
+        $repo = $this->createMock( ChannelRepository::class );
+        $repo->method( 'resolveByRoutingKeyId' )->willReturn( [
+            'id' => 4, 'tenant_id' => 3, 'bot_id' => 7, 'channel_type' => 'telegram',
+            'credentials_decrypted' => [ 'bot_token' => 'x' ],
+        ] );
+
+        $consent = $this->createMock( ChannelConsentService::class );
+        $consent->method( 'ensure' )->willReturn( false ); // no primer contacto
+
+        $botLoader = fn( int $tid, int $bid ) => [ 'id' => 7, 'tenant_id' => 3, 'system_prompt' => 'x', 'settings' => [] ];
+
+        return new InboundDispatcher( $registry, $repo, $consent, $pipeline, $botLoader );
+    }
+
+    public function test_business_error_429_sends_fallback_and_does_not_rethrow(): void {
+        $sent     = [];
+        $pipeline = $this->createMock( ChatPipeline::class );
+        $pipeline->method( 'run' )->willThrowException( new \RuntimeException( 'rate limited', 429 ) );
+
+        $dispatcher = $this->makeDispatcher( $pipeline, $sent );
+
+        // No debe re-lanzar: error de negocio terminal.
+        $dispatcher->handle( 4, [ 'message' => [ 'text' => 'Hola' ] ] );
+
+        $this->assertCount( 1, $sent );
+        $this->assertSame( '55', $sent[0][0] );
+        $this->assertStringContainsString( 'muy rápido', $sent[0][1] );
+    }
+
+    public function test_transient_error_503_is_rethrown_for_retry_and_sends_no_business_reply(): void {
+        $sent     = [];
+        $pipeline = $this->createMock( ChatPipeline::class );
+        $pipeline->method( 'run' )->willThrowException( new \RuntimeException( 'LLM caído', 503 ) );
+
+        $dispatcher = $this->makeDispatcher( $pipeline, $sent );
+
+        $this->expectException( \RuntimeException::class );
+        $this->expectExceptionCode( 503 );
+
+        try {
+            $dispatcher->handle( 4, [ 'message' => [ 'text' => 'Hola' ] ] );
+        } finally {
+            // El 503 se re-lanza para que Action Scheduler reintente; no se envía
+            // ninguna respuesta de negocio al usuario.
+            $this->assertSame( [], $sent );
+        }
+    }
 }

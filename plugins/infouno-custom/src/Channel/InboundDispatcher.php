@@ -14,13 +14,17 @@ use Infouno\SaaS\Chat\PipelineContext;
  */
 final class InboundDispatcher {
 
-    /** Mensajes de fallback por código HTTP del pipeline (sin reintento). */
+    /**
+     * Mensajes de fallback por código HTTP del pipeline. Solo errores de NEGOCIO
+     * terminales (sin reintento): cuota, permiso, input inválido, rate limit.
+     * Los códigos fuera de este mapa (ej. 503 por agotamiento de proveedores LLM)
+     * se consideran transitorios y se re-lanzan para que Action Scheduler reintente.
+     */
     private const FALLBACK = [
         402 => 'Alcanzaste el límite de esta conversación. Escribinos más tarde, ¡gracias!',
         403 => 'No pudimos procesar tu mensaje en este momento.',
         422 => 'No puedo responder a eso. ¿Te ayudo con algo sobre nuestros productos o servicios?',
         429 => 'Estás escribiendo muy rápido 🙂 Esperá unos segundos e intentá de nuevo.',
-        503 => 'El servicio no está disponible por unos minutos. Probá de nuevo en un ratito.',
     ];
 
     private const WELCOME = "👋 ¡Hola! Te responde un asistente automático. "
@@ -79,13 +83,17 @@ final class InboundDispatcher {
                 PipelineContext::forChannel( $inbound->channelType, $inbound->externalUser )
             );
         } catch ( \RuntimeException $e ) {
-            // Errores de negocio (cuota, rate limit, input): fallback amable, sin reintento.
-            $msg = self::FALLBACK[ $e->getCode() ] ?? 'Ocurrió un problema. Probá de nuevo en un momento.';
-            $this->trySend( $adapter, $channel, $inbound->externalUser, $msg );
-            return;
+            // Solo los códigos del mapa FALLBACK son errores de negocio terminales
+            // (cuota, permiso, input, rate limit): fallback amable, sin reintento.
+            if ( isset( self::FALLBACK[ $e->getCode() ] ) ) {
+                $this->trySend( $adapter, $channel, $inbound->externalUser, self::FALLBACK[ $e->getCode() ] );
+                return;
+            }
+            // Cualquier otro error (ej. 503 por agotamiento de proveedores LLM, o
+            // transitorios de red) se re-lanza para que Action Scheduler reintente
+            // con backoff. No mandamos respuesta de negocio.
+            throw $e;
         }
-        // Errores transitorios (LLM 5xx/red) son \Throwable distinto de RuntimeException con código:
-        // se dejan propagar para que Action Scheduler reintente con backoff.
 
         $reply = $sink->getBuffer();
         if ( '' !== trim( $reply ) ) {

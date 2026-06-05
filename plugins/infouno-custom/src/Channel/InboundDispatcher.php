@@ -27,6 +27,8 @@ final class InboundDispatcher {
         429 => 'Estás escribiendo muy rápido 🙂 Esperá unos segundos e intentá de nuevo.',
     ];
 
+    private const UNSUPPORTED = 'Por ahora solo puedo leer mensajes de texto. ¿Me contás tu consulta por escrito? 🙂';
+
     private const WELCOME = "👋 ¡Hola! Te responde un asistente automático. "
         . "Al continuar, aceptás nuestra política de privacidad y el tratamiento de tus datos "
         . "según la Ley 25.326. Podés pedir la baja en cualquier momento.";
@@ -58,6 +60,12 @@ final class InboundDispatcher {
         $inbound = $adapter->parseInbound( $payload );
         if ( null === $inbound ) {
             return; // no era un mensaje de texto procesable
+        }
+
+        // No-texto (audio, foto, sticker...): respondemos pidiendo texto, sin pipeline ni consentimiento.
+        if ( 'unsupported' === $inbound->kind ) {
+            $this->trySend( $adapter, $channel, $inbound->externalUser, self::UNSUPPORTED );
+            return;
         }
 
         $tenantId = (int) $channel['tenant_id'];

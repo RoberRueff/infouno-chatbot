@@ -22,6 +22,7 @@ final class InboundMessage {
         public readonly string $externalUser,
         public readonly string $text,
         public readonly string $externalMsgId,
+        public readonly string $kind = 'text',
     ) {}
 
     public function conversationKey(): string {

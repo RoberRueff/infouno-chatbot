@@ -112,4 +112,31 @@ if ( ! isset( $GLOBALS['__infouno_transients'] ) ) {
     $GLOBALS['__infouno_transients'] = [];
 }
 
+if ( ! class_exists( 'WP_REST_Request' ) ) {
+    class WP_REST_Request {
+        private array $headers = [];
+        private array $params  = [];
+        private string $body   = '';
+
+        public function set_header( string $key, string $value ): void {
+            $this->headers[ strtolower( $key ) ] = $value;
+        }
+        public function get_header( string $key ): ?string {
+            return $this->headers[ strtolower( $key ) ] ?? null;
+        }
+        public function set_param( string $key, mixed $value ): void {
+            $this->params[ $key ] = $value;
+        }
+        public function get_param( string $key ): mixed {
+            return $this->params[ $key ] ?? null;
+        }
+        public function set_body( string $body ): void {
+            $this->body = $body;
+        }
+        public function get_body(): string {
+            return $this->body;
+        }
+    }
+}
+
 $GLOBALS['wpdb'] = new WpdbStub();

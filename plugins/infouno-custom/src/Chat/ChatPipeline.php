@@ -8,6 +8,7 @@ use Infouno\SaaS\Bot\QuotaService;
 use Infouno\SaaS\Lead\LeadService;
 use Infouno\SaaS\LLM\LLMRouter;
 use Infouno\SaaS\LLM\StreamResult;
+use Infouno\SaaS\LLM\TokenEstimator;
 use Infouno\SaaS\Security\InputGuard;
 use Infouno\SaaS\Tenant\TenantManager;
 
@@ -81,32 +82,51 @@ final class ChatPipeline {
         $history  = $this->conversationRepo->getRecentMessages( $convId, $tenantId, $windowSize );
         $messages = $this->buildMessages( (string) ( $bot['system_prompt'] ?? '' ), $history, $userMessage );
 
-        // 6. Incrementar rate limit antes del LLM (evita retry flooding)
+        // 6. Reservar presupuesto de cuota ANTES del LLM — límite duro y race-safe.
+        $maxTokens = (int) ( $bot['settings']['max_tokens'] ?? 1024 );
+        $estimate  = TokenEstimator::estimateMessages( $messages ) + $maxTokens;
+        if ( ! $this->tenantManager->reserve( $tenantId, $estimate ) ) {
+            throw new \RuntimeException( 'Cuota mensual agotada.', 402 );
+        }
+
+        // 7. Incrementar rate limit antes de llamar al LLM (evita retry flooding)
         $this->quotaService->increment( $conversationKey, $ctx->rateLimitSecondaryKey );
 
-        // 7. Stream al sink — acumula la respuesta completa para persistirla
+        // 8. Stream al sink — acumula la respuesta completa para persistirla.
+        //    Reconcilia la reserva con el consumo real; libera si el request falla.
         $fullResponse = '';
-        $result       = $this->llmRouter->stream(
-            $bot,
-            $messages,
-            static function ( string $delta ) use ( $sink, &$fullResponse ) {
-                $fullResponse .= $delta;
-                $sink->write( $delta );
-            },
-            $tenantPlan
-        );
-        $sink->finish();
+        try {
+            $result = $this->llmRouter->stream(
+                $bot,
+                $messages,
+                static function ( string $delta ) use ( $sink, &$fullResponse ) {
+                    $fullResponse .= $delta;
+                    $sink->write( $delta );
+                },
+                $tenantPlan
+            );
+            $sink->finish();
 
-        // 8. Persistir el intercambio y actualizar cuota mensual
-        $this->conversationRepo->saveExchange(
-            $convId,
-            $userMessage,
-            $fullResponse,
-            $result->inputTokens,
-            $result->outputTokens,
-            $tenantPlan
-        );
-        $this->tenantManager->incrementQuota( $tenantId, $result->totalTokens() );
+            // Conteo real; si el proveedor no devolvió usage pero hubo texto, estimar.
+            $actual = $result->totalTokens();
+            if ( 0 === $actual && '' !== trim( $fullResponse ) ) {
+                $actual = TokenEstimator::estimateMessages( $messages ) + TokenEstimator::estimate( $fullResponse );
+            }
+
+            $this->conversationRepo->saveExchange(
+                $convId,
+                $userMessage,
+                $fullResponse,
+                $result->inputTokens,
+                $result->outputTokens,
+                $tenantPlan
+            );
+
+            $this->tenantManager->reconcile( $tenantId, $estimate, $actual );
+        } catch ( \Throwable $e ) {
+            $this->tenantManager->release( $tenantId, $estimate );
+            throw $e;
+        }
 
         // 9. Lead Engine — best-effort, nunca interrumpe el chat
         if ( null !== $this->leadService ) {

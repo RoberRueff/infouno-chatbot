@@ -28,6 +28,12 @@ define( 'INFOUNO_CONSENT_VERSION', '1.0' );
 
 require_once INFOUNO_PLUGIN_DIR . 'vendor/autoload.php';
 
+// Action Scheduler: cola de jobs en background para procesar webhooks de canales.
+$infouno_as = __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
+if ( file_exists( $infouno_as ) ) {
+    require_once $infouno_as;
+}
+
 register_activation_hook( __FILE__, [ Core\Activator::class, 'activate' ] );
 register_deactivation_hook( __FILE__, [ Core\Deactivator::class, 'deactivate' ] );
 

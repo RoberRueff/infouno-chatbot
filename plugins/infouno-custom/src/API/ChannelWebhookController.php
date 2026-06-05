@@ -59,11 +59,24 @@ final class ChannelWebhookController {
             return new \WP_REST_Response( [ 'ok' => false ], 403 );
         }
 
-        // Meta espera el challenge crudo como body. WP_REST_Response con un string
-        // lo serializa como JSON ("C-99"); Meta acepta el match exacto del valor.
-        $response = new \WP_REST_Response( $challenge, 200 );
-        $response->header( 'Content-Type', 'text/plain; charset=UTF-8' );
-        return $response;
+        // Meta hace un match EXACTO del body contra el hub.challenge que envió.
+        // WP_REST_Server serializa la data como JSON, así que un string saldría
+        // entrecomillado ("C-123") y la verificación fallaría. Cortocircuitamos la
+        // serialización para emitir el challenge crudo en text/plain.
+        add_filter(
+            'rest_pre_serve_request',
+            static function ( $served, $result ) use ( $challenge ) {
+                if ( ! headers_sent() ) {
+                    header( 'Content-Type: text/plain; charset=UTF-8' );
+                }
+                echo $challenge;
+                return true;
+            },
+            10,
+            2
+        );
+
+        return new \WP_REST_Response( $challenge, 200 );
     }
 
     public function handle( \WP_REST_Request $request ): \WP_REST_Response {

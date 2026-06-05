@@ -175,6 +175,12 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
     }
 }
 
+if ( ! function_exists( 'add_filter' ) ) {
+    function add_filter( string $hook, callable $cb, int $priority = 10, int $args = 1 ): bool {
+        return true;
+    }
+}
+
 if ( ! function_exists( 'current_time' ) ) {
     function current_time( string $type, int $gmt = 0 ): string {
         return gmdate( 'Y-m-d H:i:s' );

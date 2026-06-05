@@ -606,18 +606,24 @@ final class Migrator {
     }
 
     /**
-     * Idempotencia de webhooks: INSERT IGNORE sobre (channel_type, external_msg_id)
+     * Idempotencia de webhooks: INSERT IGNORE sobre (channel_id, external_msg_id)
      * garantiza que cada mensaje entrante se procesa una sola vez.
+     *
+     * La UNIQUE es por channel_id (no por channel_type) porque external_msg_id
+     * suele ser secuencial por canal (ej. update_id de Telegram) y colisionaría
+     * entre tenants distintos, descartando mensajes legítimos cross-tenant.
+     * channel_type se conserva solo por legibilidad.
      */
     private function createChannelEventsTable( \wpdb $wpdb, string $charset ): void {
         $table = $wpdb->prefix . 'infouno_channel_events';
         $sql   = "CREATE TABLE {$table} (
             id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            channel_id      INT UNSIGNED    NOT NULL,
             channel_type    VARCHAR(20)     NOT NULL,
             external_msg_id VARCHAR(191)    NOT NULL,
             received_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
-            UNIQUE KEY chan_msg (channel_type, external_msg_id),
+            UNIQUE KEY chan_msg (channel_id, external_msg_id),
             KEY received_at (received_at)
         ) {$charset};";
 

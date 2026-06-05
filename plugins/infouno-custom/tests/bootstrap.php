@@ -103,9 +103,11 @@ class WpdbStub {
         return 1;
     }
 
-    public mixed $stub_query_result = 0;
+    public mixed  $stub_query_result = 0;
+    public string $last_query        = '';
 
     public function query( string $query ): mixed {
+        $this->last_query = $query;
         return $this->stub_query_result;
     }
 }

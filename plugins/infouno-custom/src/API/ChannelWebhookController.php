@@ -55,7 +55,7 @@ final class ChannelWebhookController {
 
         // Idempotencia: descartar retries del proveedor.
         $inbound = $adapter->parseInbound( $payload );
-        if ( null !== $inbound && ! $this->eventRepo->markIfNew( $type, $inbound->externalMsgId ) ) {
+        if ( null !== $inbound && ! $this->eventRepo->markIfNew( (int) $channel['id'], $type, $inbound->externalMsgId ) ) {
             return new \WP_REST_Response( [ 'ok' => true, 'dup' => true ], 200 );
         }
 

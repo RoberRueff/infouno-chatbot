@@ -60,10 +60,11 @@ if ( ! function_exists( 'error_log' ) ) {
  * Configurable por test via $GLOBALS['wpdb']->stubReturn.
  */
 class WpdbStub {
-    public string $prefix       = 'wp_';
-    public int    $insert_id    = 0;
-    public mixed  $stub_get_row = null;
-    public mixed  $stub_get_var = null;
+    public string $prefix          = 'wp_';
+    public int    $insert_id       = 0;
+    public mixed  $stub_get_row    = null;
+    public mixed  $stub_get_var    = null;
+    public mixed  $stub_get_results = [];
 
     public function prepare( string $query, mixed ...$args ): string {
         // Sustituye placeholders para retornar query válida en assertions
@@ -77,6 +78,10 @@ class WpdbStub {
 
     public function get_var( string $query ): mixed {
         return $this->stub_get_var;
+    }
+
+    public function get_results( string $query, string $output = 'ARRAY_A' ): mixed {
+        return $this->stub_get_results;
     }
 
     public function insert( string $table, array $data, array $formats = [] ): int|false {
@@ -136,6 +141,12 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
         public function get_body(): string {
             return $this->body;
         }
+    }
+}
+
+if ( ! function_exists( 'current_time' ) ) {
+    function current_time( string $type, int $gmt = 0 ): string {
+        return gmdate( 'Y-m-d H:i:s' );
     }
 }
 

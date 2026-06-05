@@ -75,8 +75,11 @@ final class LeadScorerTest extends TestCase {
     }
 
     public function test_high_intent_keyword_adds_10_bonus(): void {
+        // 'quiero un presupuesto' suma buy(+40) + keyword 'presupuesto'(+10) = 50.
+        // 'necesito una heladera' es buy intent SIN keyword de alta intención = 40.
+        // (Cuidado: 'quiero comprar' ES una high-intent keyword, no sirve de control.)
         $with_keyword    = $this->scorer->analyze( 'quiero un presupuesto' );
-        $without_keyword = $this->scorer->analyze( 'quiero comprar algo' );
+        $without_keyword = $this->scorer->analyze( 'necesito una heladera' );
 
         $this->assertGreaterThan( $without_keyword['score'], $with_keyword['score'] );
     }
@@ -149,8 +152,9 @@ final class LeadScorerTest extends TestCase {
     }
 
     public function test_temperature_hot_at_60(): void {
-        // Buy intent (+40) + urgency (+15) + payment (+20) = 75 → hot
-        $result = $this->scorer->analyze( 'quiero comprar urgente, pago con tarjeta' );
+        // Buy intent (+40) + keyword 'quiero comprar' (+10) + payment (+20) = 70 → hot.
+        // Sin urgencia ni budget confirmado, así que NO escala a 'ready' (≥85 o budget+timeline).
+        $result = $this->scorer->analyze( 'quiero comprar, pago con tarjeta' );
 
         $this->assertSame( 'hot', $result['temperature'] );
         $this->assertTrue( $result['is_qualified'] );

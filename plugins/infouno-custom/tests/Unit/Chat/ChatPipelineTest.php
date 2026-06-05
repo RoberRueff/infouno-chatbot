@@ -28,7 +28,9 @@ final class ChatPipelineTest extends TestCase {
     public function test_runs_pipeline_and_buffers_full_response(): void {
         $tenantManager = $this->createMock( TenantManager::class );
         $tenantManager->method( 'validateForChat' )->willReturn( [ 'plan' => 'free' ] );
-        $tenantManager->expects( $this->once() )->method( 'incrementQuota' )->with( 3, 30 );
+        $tenantManager->method( 'reserve' )->willReturn( true );
+        // Nuevo flujo: reserva pre-LLM + reconcile al consumo real (10 + 20 = 30).
+        $tenantManager->expects( $this->once() )->method( 'reconcile' )->with( 3, $this->greaterThan( 0 ), 30 );
 
         $botManager = $this->createMock( BotManager::class );
 

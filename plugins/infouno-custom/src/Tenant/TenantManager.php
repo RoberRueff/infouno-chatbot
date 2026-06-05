@@ -152,6 +152,101 @@ final class TenantManager {
     }
 
     /**
+     * Reserva atómica-condicional de presupuesto de cuota ANTES de llamar al LLM.
+     * El UPDATE solo afecta la fila si el tenant está activo y la reserva entra en el límite,
+     * por lo que es race-safe (la condición se evalúa atómicamente en MySQL).
+     *
+     * @return bool true si reservó; false si no entra (cuota agotada o tenant inactivo).
+     */
+    public function reserve( int $tenantId, int $estimate ): bool {
+        if ( $estimate <= 0 ) {
+            return true; // nada que reservar
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'infouno_tenants';
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE `{$table}`
+                    SET quota_used = quota_used + %d
+                  WHERE id = %d
+                    AND status = 'active'
+                    AND quota_used + %d <= quota_limit",
+                $estimate,
+                $tenantId,
+                $estimate
+            )
+        );
+
+        return 1 === (int) $affected;
+    }
+
+    /**
+     * Reconcilia la reserva con el consumo real tras el LLM:
+     * quota_used = GREATEST(0, quota_used - reserved + actual).
+     * Luego evalúa la alerta de 90% (igual que incrementQuota).
+     */
+    public function reconcile( int $tenantId, int $reserved, int $actual ): void {
+        global $wpdb;
+        $table = $wpdb->prefix . 'infouno_tenants';
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE `{$table}`
+                    SET quota_used = GREATEST(0, quota_used - %d + %d)
+                  WHERE id = %d",
+                $reserved,
+                $actual,
+                $tenantId
+            )
+        );
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT quota_used, quota_limit FROM `{$table}` WHERE id = %d LIMIT 1",
+                $tenantId
+            ),
+            ARRAY_A
+        );
+
+        if ( ! $row ) {
+            return;
+        }
+
+        $limit = (int) $row['quota_limit'];
+        $used  = (int) $row['quota_used'];
+
+        if ( $limit > 0 && $used >= (int) ( $limit * 0.9 ) ) {
+            $this->dispatchQuotaAlert( $tenantId, $used, $limit );
+        }
+    }
+
+    /**
+     * Libera una reserva no consumida (el request falló antes de generar tokens).
+     * quota_used = GREATEST(0, quota_used - reserved).
+     */
+    public function release( int $tenantId, int $reserved ): void {
+        if ( $reserved <= 0 ) {
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'infouno_tenants';
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE `{$table}` SET quota_used = GREATEST(0, quota_used - %d) WHERE id = %d",
+                $reserved,
+                $tenantId
+            )
+        );
+    }
+
+    /**
      * Dispara un hook de WP para que el resto del sistema reaccione a la alerta de cuota.
      * El consumidor (email, log, webhook) se engancha en 'infouno_quota_low'.
      */

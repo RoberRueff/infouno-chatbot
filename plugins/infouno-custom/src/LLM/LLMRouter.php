@@ -31,8 +31,9 @@ final class LLMRouter {
     /** @var array<string, LLMProviderInterface> */
     private array $providers;
 
-    public function __construct() {
-        $this->providers = [
+    /** @param array<string,LLMProviderInterface>|null $providers Inyectable para tests; por defecto los reales. */
+    public function __construct( ?array $providers = null ) {
+        $this->providers = $providers ?? [
             'anthropic' => new AnthropicProvider(),
             'openai'    => new OpenAIProvider(),
         ];
@@ -59,30 +60,36 @@ final class LLMRouter {
             'temperature' => (float) ( $settings['temperature'] ?? 0.7 ),
         ];
 
+        // Commit-on-first-delta: una vez que se emitió contenido al cliente no se puede
+        // des-emitir, así que se prohíbe cualquier reintento/fallback posterior.
+        $emitted       = false;
+        $wrapped       = static function ( string $delta ) use ( $onChunk, &$emitted ) {
+            $emitted = true;
+            $onChunk( $delta );
+        };
         $lastException = null;
 
-        // Intenta primero el proveedor configurado
+        // Proveedor primario con backoff exponencial.
         for ( $attempt = 0; $attempt <= self::MAX_RETRIES; $attempt++ ) {
             try {
                 if ( $attempt > 0 ) {
                     $this->sleep( self::BASE_DELAY_MS * ( 2 ** ( $attempt - 1 ) ) );
                 }
-
-                return $this->providers[ $primaryName ]->streamChat( $messages, $options, $onChunk );
-
+                return $this->providers[ $primaryName ]->streamChat( $messages, $options, $wrapped );
             } catch ( \RuntimeException $e ) {
                 $lastException = $e;
-
-                // Solo reintenta en errores recuperables
+                // Si ya se emitió contenido, no se puede reintentar sin duplicar: propagar.
+                if ( $emitted ) {
+                    throw $e;
+                }
                 if ( ! $this->isRetryable( $e->getCode() ) ) {
                     break;
                 }
             }
         }
 
-        // Fallback al proveedor secundario (un solo intento).
-        // Hook: listeners pueden logear, alertar al tenant o registrar métricas de costo inesperado.
-        if ( isset( $this->providers[ $fallbackName ] ) ) {
+        // Fallback (un intento) SOLO si todavía no se emitió nada.
+        if ( ! $emitted && isset( $this->providers[ $fallbackName ] ) ) {
             do_action(
                 'infouno_model_fallback',
                 $primaryName,
@@ -90,9 +97,8 @@ final class LLMRouter {
                 $options['model'],
                 $lastException?->getMessage() ?? ''
             );
-
             try {
-                return $this->providers[ $fallbackName ]->streamChat( $messages, $options, $onChunk );
+                return $this->providers[ $fallbackName ]->streamChat( $messages, $options, $wrapped );
             } catch ( \RuntimeException $e ) {
                 $lastException = $e;
             }

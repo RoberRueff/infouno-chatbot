@@ -4,6 +4,21 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Permite a PHPUnit doblar clases declaradas `final` (sin tocar el código de
+// producción). Solo afecta el runtime de tests. Debe ir antes de cargar clases.
+if ( class_exists( \DG\BypassFinals::class ) ) {
+    \DG\BypassFinals::enable();
+}
+
+// Constantes de WordPress usadas por las clases bajo test (no se carga WP).
+if ( ! defined( 'ARRAY_A' ) ) {
+    define( 'ARRAY_A', 'ARRAY_A' );
+}
+
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+    define( 'DAY_IN_SECONDS', 86400 );
+}
+
 /**
  * Stubs mínimos de funciones WordPress para tests unitarios.
  * Solo se definen las funciones que usan las clases bajo test.
@@ -49,10 +64,11 @@ if ( ! function_exists( 'error_log' ) ) {
  * Configurable por test via $GLOBALS['wpdb']->stubReturn.
  */
 class WpdbStub {
-    public string $prefix       = 'wp_';
-    public int    $insert_id    = 0;
-    public mixed  $stub_get_row = null;
-    public mixed  $stub_get_var = null;
+    public string $prefix          = 'wp_';
+    public int    $insert_id       = 0;
+    public mixed  $stub_get_row    = null;
+    public mixed  $stub_get_var    = null;
+    public mixed  $stub_get_results = [];
 
     public function prepare( string $query, mixed ...$args ): string {
         // Sustituye placeholders para retornar query válida en assertions
@@ -68,13 +84,87 @@ class WpdbStub {
         return $this->stub_get_var;
     }
 
+    public function get_results( string $query, string $output = 'ARRAY_A' ): mixed {
+        return $this->stub_get_results;
+    }
+
+    /** @var callable|null */
+    public $onInsert = null;
+
     public function insert( string $table, array $data, array $formats = [] ): int|false {
+        if ( is_callable( $this->onInsert ) ) {
+            ( $this->onInsert )( $table, $data );
+        }
         $this->insert_id = 1;
         return 1;
     }
 
     public function update( string $table, array $data, array $where, array $formats = [], array $whereFormats = [] ): int|false {
         return 1;
+    }
+
+    public mixed  $stub_query_result = 0;
+    public string $last_query        = '';
+
+    public function query( string $query ): mixed {
+        $this->last_query = $query;
+        return $this->stub_query_result;
+    }
+}
+
+if ( ! function_exists( 'get_transient' ) ) {
+    function get_transient( string $key ): mixed {
+        return $GLOBALS['__infouno_transients'][ $key ] ?? false;
+    }
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+    function set_transient( string $key, mixed $value, int $ttl = 0 ): bool {
+        $GLOBALS['__infouno_transients'][ $key ] = $value;
+        return true;
+    }
+}
+
+if ( ! function_exists( 'get_option' ) ) {
+    function get_option( string $key, mixed $default = false ): mixed {
+        return $GLOBALS['__infouno_options'][ $key ] ?? $default;
+    }
+}
+
+if ( ! isset( $GLOBALS['__infouno_transients'] ) ) {
+    $GLOBALS['__infouno_transients'] = [];
+}
+
+if ( ! class_exists( 'WP_REST_Request' ) ) {
+    class WP_REST_Request {
+        private array $headers = [];
+        private array $params  = [];
+        private string $body   = '';
+
+        public function set_header( string $key, string $value ): void {
+            $this->headers[ strtolower( $key ) ] = $value;
+        }
+        public function get_header( string $key ): ?string {
+            return $this->headers[ strtolower( $key ) ] ?? null;
+        }
+        public function set_param( string $key, mixed $value ): void {
+            $this->params[ $key ] = $value;
+        }
+        public function get_param( string $key ): mixed {
+            return $this->params[ $key ] ?? null;
+        }
+        public function set_body( string $body ): void {
+            $this->body = $body;
+        }
+        public function get_body(): string {
+            return $this->body;
+        }
+    }
+}
+
+if ( ! function_exists( 'current_time' ) ) {
+    function current_time( string $type, int $gmt = 0 ): string {
+        return gmdate( 'Y-m-d H:i:s' );
     }
 }
 

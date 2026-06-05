@@ -23,20 +23,26 @@ final class QuotaService {
      * Verifica ambas capas de rate limit.
      * La capa de IP protege contra rotación de session_id.
      *
+     * @param string      $sessionId     Clave de sesión (web: session_id; canal: "tg:<chatid>").
+     * @param string|null $secondaryRaw  Clave secundaria explícita (canal: "tipo:external_user").
+     *                                   null = flujo web → usa la IP del cliente (sin cambios).
      * @throws \RuntimeException con código 429 si algún límite está alcanzado.
      */
-    public function checkRateLimit( string $sessionId ): void {
+    public function checkRateLimit( string $sessionId, ?string $secondaryRaw = null ): void {
         $this->checkLayer( $this->sessionKey( $sessionId ), self::MAX_PER_SESSION );
-        $this->checkLayer( $this->ipKey(), self::MAX_PER_IP );
+        $this->checkLayer( $this->resolveSecondaryKey( $secondaryRaw ), self::MAX_PER_IP );
     }
 
     /**
      * Incrementa los contadores de ambas capas.
      * Llamar después de validar y antes de enviar al LLM.
+     *
+     * @param string      $sessionId     Clave de sesión.
+     * @param string|null $secondaryRaw  Clave secundaria explícita (canal) o null (web → IP).
      */
-    public function increment( string $sessionId ): void {
+    public function increment( string $sessionId, ?string $secondaryRaw = null ): void {
         $this->incrementKey( $this->sessionKey( $sessionId ) );
-        $this->incrementKey( $this->ipKey() );
+        $this->incrementKey( $this->resolveSecondaryKey( $secondaryRaw ) );
     }
 
     /** Segundos restantes de la ventana de sesión activa, o 0 si no hay ventana. */
@@ -99,5 +105,16 @@ final class QuotaService {
         $timeoutKey = '_transient_timeout_' . $key;
         $expiry     = (int) get_option( $timeoutKey, 0 );
         return max( 0, $expiry - time() );
+    }
+
+    /**
+     * Clave de la capa 2: si no se provee una clave secundaria explícita (flujo web),
+     * se usa la IP real. En canales se pasa "tipo:external_user" — no hay IP del usuario.
+     */
+    private function resolveSecondaryKey( ?string $secondaryRaw ): string {
+        if ( null === $secondaryRaw || '' === $secondaryRaw ) {
+            return $this->ipKey();
+        }
+        return 'infouno_rl_x_' . substr( hash( 'sha256', $secondaryRaw ), 0, 16 );
     }
 }

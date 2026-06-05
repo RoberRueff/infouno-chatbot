@@ -4,11 +4,13 @@
     "type": "wordpress-plugin",
     "license": "proprietary",
     "require": {
-        "php": ">=8.1"
+        "php": ">=8.1",
+        "woocommerce/action-scheduler": "^3.8"
     },
     "require-dev": {
-        "squizlabs/php_codesniffer": "^3.9",
-        "phpunit/phpunit": "^11.0"
+        "dg/bypass-finals": "^1.10",
+        "phpunit/phpunit": "^11.0",
+        "squizlabs/php_codesniffer": "^3.9"
     },
     "autoload": {
         "psr-4": {

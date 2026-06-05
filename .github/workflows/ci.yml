@@ -1,0 +1,95 @@
+name: CI
+
+# Dos garantías mínimas en cada push/PR:
+#   1. La suite de tests unitarios pasa.
+#   2. El plugin CARGA y MIGRA en un WordPress real (load-test).
+# El punto 2 existe porque un bug que fataleaba el arranque del plugin
+# (un union type ilegal `void|WP_Error`) pasó los 81 tests unitarios + lint
+# y solo se detectó al levantar WordPress de verdad. Esto evita que vuelva.
+
+on:
+  push:
+    branches: [ main, dev, "feature/**", "fix/**", "chore/**" ]
+  pull_request:
+    branches: [ main, dev ]
+
+defaults:
+  run:
+    working-directory: plugins/infouno-custom
+
+jobs:
+  tests:
+    name: Unit tests (PHPUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: sodium, mbstring
+          tools: composer:v2
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress
+      - name: PHPUnit
+        run: vendor/bin/phpunit --no-coverage
+
+  wp-load:
+    name: WP load-test (activación + migración)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wp_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: sodium, mbstring, mysqli
+          tools: composer:v2, wp-cli
+
+      - name: Install plugin dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Download & configure WordPress
+        working-directory: ${{ github.workspace }}
+        run: |
+          wp core download --path=/tmp/wp --version=latest
+          cat > /tmp/extra.php <<'PHP'
+          define('INFOUNO_ENCRYPTION_KEY', '0000000000000000000000000000000000000000000000000000000000000000');
+          define('INFOUNO_ANTHROPIC_KEY', 'dummy-ci');
+          define('INFOUNO_OPENAI_KEY', 'dummy-ci');
+          PHP
+          wp config create --path=/tmp/wp --dbname=wp_test --dbuser=root --dbpass=root \
+            --dbhost=127.0.0.1 --extra-php < /tmp/extra.php
+          wp core install --path=/tmp/wp --url=http://localhost --title=CI \
+            --admin_user=admin --admin_password=admin --admin_email=ci@example.com --skip-email
+
+      - name: Link plugin into WordPress
+        working-directory: ${{ github.workspace }}
+        run: ln -s "$GITHUB_WORKSPACE/plugins/infouno-custom" /tmp/wp/wp-content/plugins/infouno-custom
+
+      - name: Activate plugin (load-test)
+        working-directory: ${{ github.workspace }}
+        run: wp plugin activate infouno-custom --path=/tmp/wp
+
+      - name: Assert migration ran (v9 + columnas de canal)
+        working-directory: ${{ github.workspace }}
+        run: |
+          test "$(wp option get infouno_db_version --path=/tmp/wp)" = "9" \
+            || { echo "::error::infouno_db_version != 9"; exit 1; }
+          wp eval --path=/tmp/wp '
+            global $wpdb;
+            $tbl = $wpdb->get_col("SHOW TABLES LIKE \"%infouno_channels\"");
+            if (empty($tbl)) { fwrite(STDERR, "FALTA tabla wp_infouno_channels\n"); exit(1); }
+            $col = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}infouno_conversations LIKE \"channel\"");
+            if (empty($col)) { fwrite(STDERR, "FALTA columna conversations.channel (bug fresh-install)\n"); exit(1); }
+            echo "load-test OK: plugin activo, migracion v9, columnas de canal presentes\n";
+          '

@@ -28,7 +28,13 @@ final class ConversationRepository {
      * Maneja la condición de carrera: si INSERT falla por clave duplicada
      * (dos requests concurrentes), hace SELECT para devolver la fila existente.
      */
-    public function getOrCreate( int $tenantId, int $botId, string $sessionId ): array {
+    public function getOrCreate(
+        int     $tenantId,
+        int     $botId,
+        string  $sessionId,
+        string  $channel      = 'web',
+        ?string $externalUser = null
+    ): array {
         global $wpdb;
 
         $table = $wpdb->prefix . 'infouno_conversations';
@@ -50,12 +56,14 @@ final class ConversationRepository {
         $wpdb->insert(
             $table,
             [
-                'tenant_id'  => $tenantId,
-                'bot_id'     => $botId,
-                'session_id' => $sessionId,
-                'metadata'   => null,
+                'tenant_id'     => $tenantId,
+                'bot_id'        => $botId,
+                'session_id'    => $sessionId,
+                'metadata'      => null,
+                'channel'       => $channel,
+                'external_user' => $externalUser,
             ],
-            [ '%d', '%d', '%s', '%s' ]
+            [ '%d', '%d', '%s', '%s', '%s', '%s' ]
         );
 
         $insertId = (int) $wpdb->insert_id;

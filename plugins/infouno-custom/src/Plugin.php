@@ -8,6 +8,7 @@ use Infouno\SaaS\Admin\BotDashboard;
 use Infouno\SaaS\Admin\BotWizard;
 use Infouno\SaaS\Admin\LeadDashboard;
 use Infouno\SaaS\Admin\OpportunityDashboard;
+use Infouno\SaaS\API\ChannelWebhookController;
 use Infouno\SaaS\API\LeadController;
 use Infouno\SaaS\API\OpportunityController;
 use Infouno\SaaS\API\RestRouter;
@@ -15,6 +16,14 @@ use Infouno\SaaS\Automation\AutomationEngine;
 use Infouno\SaaS\Automation\NotificationDispatcher;
 use Infouno\SaaS\Bot\BotManager;
 use Infouno\SaaS\Bot\QuotaService;
+use Infouno\SaaS\Channel\ChannelConsentService;
+use Infouno\SaaS\Channel\ChannelEventRepository;
+use Infouno\SaaS\Channel\ChannelRegistry;
+use Infouno\SaaS\Channel\ChannelRepository;
+use Infouno\SaaS\Channel\Http\WpHttpClient;
+use Infouno\SaaS\Channel\InboundDispatcher;
+use Infouno\SaaS\Channel\TelegramAdapter;
+use Infouno\SaaS\Chat\ChatPipeline;
 use Infouno\SaaS\Chat\ChatService;
 use Infouno\SaaS\Chat\ConversationRepository;
 use Infouno\SaaS\Core\Migrator;
@@ -24,6 +33,7 @@ use Infouno\SaaS\Lead\LeadService;
 use Infouno\SaaS\LLM\LLMRouter;
 use Infouno\SaaS\Opportunity\OpportunityRepository;
 use Infouno\SaaS\Opportunity\OpportunityService;
+use Infouno\SaaS\Security\CredentialVault;
 use Infouno\SaaS\Tenant\TenantManager;
 
 /**
@@ -51,6 +61,10 @@ final class Plugin {
     private LeadDashboard          $leadDashboard;
     private OpportunityDashboard   $opportunityDashboard;
     private BotWizard              $botWizard;
+    private ChannelRegistry        $channelRegistry;
+    private ChannelRepository      $channelRepository;
+    private ChannelEventRepository $channelEventRepository;
+    private InboundDispatcher      $inboundDispatcher;
 
     private function __construct() {}
 
@@ -97,7 +111,51 @@ final class Plugin {
             $this->leadService,
         );
 
+        // ── Canales Sociales (Fase 1) ────────────────────────────────────────
+        if ( ! defined( 'INFOUNO_ENCRYPTION_KEY' ) ) {
+            // Sin clave de cifrado no se pueden manejar credenciales de canal.
+            $vault = null;
+        } else {
+            $vault = new CredentialVault( INFOUNO_ENCRYPTION_KEY );
+        }
+
+        if ( null !== $vault ) {
+            $this->channelRepository      = new ChannelRepository( $vault );
+            $this->channelEventRepository = new ChannelEventRepository();
+            $this->channelRegistry        = new ChannelRegistry();
+            $this->channelRegistry->register( new TelegramAdapter( $vault, new WpHttpClient() ) );
+
+            $pipeline = new ChatPipeline(
+                $this->tenantManager,
+                $this->botManager,
+                $this->quotaService,
+                $this->conversationRepo,
+                $this->llmRouter,
+                $this->leadService,
+            );
+            // El dispatcher invoca al loader como ($tenantId, $botId); BotManager::getById
+            // es ($botId, $tenantId) y devuelve el bot con settings decodificado a array (o null).
+            $botLoader = fn( int $tid, int $bid ): ?array => $this->botManager->getById( $bid, $tid );
+
+            $this->inboundDispatcher = new InboundDispatcher(
+                $this->channelRegistry,
+                $this->channelRepository,
+                new ChannelConsentService(),
+                $pipeline,
+                $botLoader,
+            );
+        }
+
         // ── API ──────────────────────────────────────────────────────────────
+        // El RestRouter exige un ChannelWebhookController (Task 15). Si no hay clave de
+        // cifrado, se construye uno con registry/repo de fallback: sin canales activos en
+        // BD, resolveByRoutingKey devuelve null y el endpoint responde 404 sin descifrar nada.
+        $webhookController = new ChannelWebhookController(
+            $this->channelRegistry        ?? new ChannelRegistry(),
+            $this->channelRepository      ?? new ChannelRepository( new CredentialVault( str_repeat( '0', 64 ) ) ),
+            $this->channelEventRepository ?? new ChannelEventRepository(),
+        );
+
         $this->restRouter = new RestRouter(
             $this->tenantManager,
             $this->botManager,
@@ -106,6 +164,7 @@ final class Plugin {
             $this->conversationRepo,
             new LeadController( $this->tenantManager ),
             new OpportunityController( $this->opportunityService, $this->opportunityRepo, $this->tenantManager ),
+            $webhookController,
         );
 
         // ── Admin ────────────────────────────────────────────────────────────
@@ -150,6 +209,24 @@ final class Plugin {
         // Cron de mantenimiento
         add_action( 'infouno_purge_expired_messages', [ $this, 'purgeExpiredMessages' ] );
         add_action( 'infouno_reset_monthly_quotas',   [ $this, 'resetMonthlyQuotas' ] );
+
+        // Worker de canales (Action Scheduler) — solo si la infra de canal está activa.
+        if ( isset( $this->inboundDispatcher ) ) {
+            // Action Scheduler expande el array de args como parámetros posicionales
+            // (do_action_ref_array), por eso el callback recibe channelId y payload sueltos.
+            add_action( 'infouno_process_inbound', function ( $channelId = 0, $payload = [] ): void {
+                $channelId = (int) $channelId;
+                $payload   = is_array( $payload ) ? $payload : [];
+                if ( $channelId > 0 ) {
+                    $this->inboundDispatcher->handle( $channelId, $payload );
+                }
+            }, 10, 2 );
+        }
+
+        // Purga de eventos de idempotencia (mantenimiento).
+        add_action( 'infouno_purge_channel_events', function (): void {
+            ( new ChannelEventRepository() )->purgeOlderThan( 7 );
+        } );
     }
 
     /** Ejecuta migraciones si la versión almacenada en BD es antigua. */

@@ -41,7 +41,7 @@ final class InputGuard {
         // --- Alta confianza (ES) ---
         '/olvida\s+tus\s+(instrucciones?|reglas?|restricciones?)/i',
         '/ignora\s+(tus\s+|las\s+)?(instrucciones?\s+)?(anteriores?|previas?|del\s+sistema)/i',
-        '/muestra\s+tu\s+(prompt|instrucciones?\s+del?\s+sistema?)/i',
+        '/(?:mu[eé]stra|mostr[aá])(?:me)?\s+tu\s+(prompt|instrucciones?\s+del?\s+sistema?)/iu',
         '/revela\s+tu\s+(prompt|instrucciones?|configuraci[oó]n\s+interna)/i',
         '/modo\s+(sin\s+restricciones?|sin\s+filtros?|desarrollador)/i',
         '/act[uú]a\s+sin\s+(restricciones?|reglas?|l[ií]mites?)/i',

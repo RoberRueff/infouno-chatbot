@@ -67,7 +67,7 @@ final class ChatController {
         ] );
     }
 
-    public function stream( \WP_REST_Request $request ): void|\WP_Error {
+    public function stream( \WP_REST_Request $request ): ?\WP_Error {
         $botToken  = $request->get_param( 'bot_token' );
         $sessionId = $request->get_param( 'session_id' );
         $message   = $request->get_param( 'message' );
@@ -80,7 +80,7 @@ final class ChatController {
             return $result;
         }
 
-        $this->initSSE();
+        $this->initSSE( $origin );
 
         try {
             $this->chatService->handle(
@@ -137,11 +137,24 @@ final class ChatController {
         return $bot;
     }
 
-    private function initSSE(): void {
+    private function initSSE( string $origin = '' ): void {
         set_time_limit( 0 );
 
         while ( ob_get_level() > 0 ) {
             ob_end_clean();
+        }
+
+        // El widget vive en el dominio del cliente: la respuesta SSE bypasea
+        // el flujo normal de WP REST, por lo que las cabeceras CORS que WP
+        // añadiría en rest_pre_serve_request nunca se emiten. Hay que enviarlas
+        // aquí o el navegador bloquea la lectura del stream cross-origin.
+        // La autorización real del origen ya la hizo preValidate()/validateOrigin;
+        // esta cabecera solo concede al navegador permiso de lectura.
+        if ( '' !== $origin ) {
+            header( 'Access-Control-Allow-Origin: ' . $origin );
+            header( 'Vary: Origin' );
+        } else {
+            header( 'Access-Control-Allow-Origin: *' );
         }
 
         header( 'Content-Type: text/event-stream; charset=UTF-8' );

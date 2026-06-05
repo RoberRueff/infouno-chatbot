@@ -36,7 +36,7 @@ namespace Infouno\SaaS\Core;
  */
 final class Migrator {
 
-    const DB_VERSION        = '8';
+    const DB_VERSION        = '9';
     const DB_VERSION_OPTION = 'infouno_db_version';
 
     public function run(): void {
@@ -66,6 +66,10 @@ final class Migrator {
             $this->migrateTo8( $wpdb, $charset );
         }
 
+        if ( version_compare( $current, '1', '>=' ) && version_compare( $current, '9', '<' ) ) {
+            $this->migrateTo9( $wpdb );
+        }
+
         // Fresh install: crea todas las tablas que aún no existan (dbDelta es idempotente).
         $this->createTenantsTable( $wpdb, $charset );
         $this->createBotsTable( $wpdb, $charset );
@@ -76,6 +80,8 @@ final class Migrator {
         $this->createLeadConsentsTable( $wpdb, $charset );
         $this->createOpportunitiesTable( $wpdb, $charset );
         $this->createAutomationLogsTable( $wpdb, $charset );
+        $this->createChannelsTable( $wpdb, $charset );
+        $this->createChannelEventsTable( $wpdb, $charset );
 
         $this->migrateQuotasToTokens( $wpdb );
 
@@ -281,6 +287,8 @@ final class Migrator {
             tenant_id  INT UNSIGNED    NOT NULL,
             bot_id     INT UNSIGNED    NOT NULL,
             session_id VARCHAR(64)     NOT NULL,
+            channel       VARCHAR(20)  NOT NULL DEFAULT 'web',
+            external_user VARCHAR(191) NULL,
             metadata   JSON            NULL,
             deleted_at DATETIME        NULL,
             created_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -333,6 +341,7 @@ final class Migrator {
             session_hash    VARCHAR(64)     NOT NULL,
             consent_version VARCHAR(10)     NOT NULL DEFAULT '1.0',
             scope           VARCHAR(50)     NOT NULL DEFAULT 'chat',
+            channel         VARCHAR(20)     NOT NULL DEFAULT 'web',
             ip_hash         VARCHAR(64)     NOT NULL,
             user_agent_hash VARCHAR(64)     NOT NULL,
             accepted_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -516,5 +525,111 @@ final class Migrator {
                 )
             );
         }
+    }
+
+    /**
+     * Upgrade path v8 → v9 — Canales Sociales (Fase 1).
+     *
+     * 1. Crea wp_infouno_channels y wp_infouno_channel_events (idempotente vía dbDelta).
+     * 2. Agrega channel + external_user a wp_infouno_conversations.
+     * 3. Agrega channel a wp_infouno_consents.
+     */
+    private function migrateTo9( \wpdb $wpdb ): void {
+        $charset = $wpdb->get_charset_collate();
+        $this->createChannelsTable( $wpdb, $charset );
+        $this->createChannelEventsTable( $wpdb, $charset );
+
+        $tableConv = $wpdb->prefix . 'infouno_conversations';
+        $this->addColumnIfMissing(
+            $wpdb,
+            $tableConv,
+            'channel',
+            "ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'web' AFTER session_id"
+        );
+        $this->addColumnIfMissing(
+            $wpdb,
+            $tableConv,
+            'external_user',
+            'ADD COLUMN external_user VARCHAR(191) NULL AFTER channel'
+        );
+
+        $tableConsents = $wpdb->prefix . 'infouno_consents';
+        $this->addColumnIfMissing(
+            $wpdb,
+            $tableConsents,
+            'channel',
+            "ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'web' AFTER scope"
+        );
+    }
+
+    /** Agrega una columna solo si no existe — idempotente. MySQL 5.7+ / MariaDB 10.3+. */
+    private function addColumnIfMissing( \wpdb $wpdb, string $table, string $column, string $alterClause ): void {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s",
+                $table,
+                $column
+            )
+        );
+
+        if ( ! $exists ) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL
+            $wpdb->query( "ALTER TABLE `{$table}` {$alterClause}" );
+        }
+    }
+
+    /**
+     * Conexión de canal por tenant/bot. Las credenciales van CIFRADAS (CredentialVault).
+     * routing_key resuelve un webhook entrante → tenant + bot.
+     */
+    private function createChannelsTable( \wpdb $wpdb, string $charset ): void {
+        $table = $wpdb->prefix . 'infouno_channels';
+        $sql   = "CREATE TABLE {$table} (
+            id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id      INT UNSIGNED NOT NULL,
+            bot_id         INT UNSIGNED NOT NULL,
+            channel_type   VARCHAR(20)  NOT NULL,
+            routing_key    VARCHAR(191) NOT NULL,
+            credentials    TEXT         NULL,
+            webhook_secret VARCHAR(64)  NULL,
+            status         VARCHAR(20)  NOT NULL DEFAULT 'active',
+            display_name   VARCHAR(100) NULL,
+            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY routing_key (routing_key),
+            KEY tenant_id    (tenant_id),
+            KEY bot_id       (bot_id),
+            KEY channel_type (channel_type)
+        ) {$charset};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Idempotencia de webhooks: INSERT IGNORE sobre (channel_id, external_msg_id)
+     * garantiza que cada mensaje entrante se procesa una sola vez.
+     *
+     * La UNIQUE es por channel_id (no por channel_type) porque external_msg_id
+     * suele ser secuencial por canal (ej. update_id de Telegram) y colisionaría
+     * entre tenants distintos, descartando mensajes legítimos cross-tenant.
+     * channel_type se conserva solo por legibilidad.
+     */
+    private function createChannelEventsTable( \wpdb $wpdb, string $charset ): void {
+        $table = $wpdb->prefix . 'infouno_channel_events';
+        $sql   = "CREATE TABLE {$table} (
+            id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            channel_id      INT UNSIGNED    NOT NULL,
+            channel_type    VARCHAR(20)     NOT NULL,
+            external_msg_id VARCHAR(191)    NOT NULL,
+            received_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY chan_msg (channel_id, external_msg_id),
+            KEY received_at (received_at)
+        ) {$charset};";
+
+        dbDelta( $sql );
     }
 }

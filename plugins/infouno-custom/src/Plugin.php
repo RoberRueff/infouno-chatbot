@@ -212,13 +212,15 @@ final class Plugin {
 
         // Worker de canales (Action Scheduler) — solo si la infra de canal está activa.
         if ( isset( $this->inboundDispatcher ) ) {
-            add_action( 'infouno_process_inbound', function ( $args ): void {
-                $channelId = (int) ( $args['channel_id'] ?? 0 );
-                $payload   = (array) ( $args['payload'] ?? [] );
+            // Action Scheduler expande el array de args como parámetros posicionales
+            // (do_action_ref_array), por eso el callback recibe channelId y payload sueltos.
+            add_action( 'infouno_process_inbound', function ( $channelId = 0, $payload = [] ): void {
+                $channelId = (int) $channelId;
+                $payload   = is_array( $payload ) ? $payload : [];
                 if ( $channelId > 0 ) {
                     $this->inboundDispatcher->handle( $channelId, $payload );
                 }
-            }, 10, 1 );
+            }, 10, 2 );
         }
 
         // Purga de eventos de idempotencia (mantenimiento).

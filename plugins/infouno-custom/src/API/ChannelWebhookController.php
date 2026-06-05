@@ -61,9 +61,11 @@ final class ChannelWebhookController {
 
         // Encolar el procesamiento en background. Ack inmediato al proveedor.
         if ( function_exists( 'as_enqueue_async_action' ) ) {
+            // Args POSICIONALES: Action Scheduler los expande como parámetros del hook
+            // (do_action_ref_array). Un array asociativo se rompería en PHP 8 (named args).
             as_enqueue_async_action(
                 'infouno_process_inbound',
-                [ 'channel_id' => (int) $channel['id'], 'payload' => $payload ],
+                [ (int) $channel['id'], $payload ],
                 'infouno-channels'
             );
         }

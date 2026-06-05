@@ -159,6 +159,25 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
         public function get_body(): string {
             return $this->body;
         }
+        public function get_json_params(): array {
+            $decoded = json_decode( '' !== $this->body ? $this->body : '{}', true );
+            return is_array( $decoded ) ? $decoded : [];
+        }
+    }
+}
+
+if ( ! class_exists( 'WP_REST_Response' ) ) {
+    class WP_REST_Response {
+        public function __construct( public mixed $data = null, public int $status = 200 ) {}
+        public function get_status(): int { return $this->status; }
+        public function get_data(): mixed { return $this->data; }
+        public function header( string $k, string $v ): void {}
+    }
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+    function add_filter( string $hook, callable $cb, int $priority = 10, int $args = 1 ): bool {
+        return true;
     }
 }
 

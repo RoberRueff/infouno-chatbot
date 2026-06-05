@@ -28,6 +28,55 @@ final class ChannelWebhookController {
             'callback'            => [ $this, 'handle' ],
             'permission_callback' => '__return_true',
         ] );
+
+        // Handshake GET de verificación (Meta/WhatsApp). Mismo patrón, método READABLE.
+        register_rest_route( $namespace, '/channels/(?P<type>[a-z]+)/(?P<key>[A-Za-z0-9_\-]+)', [
+            'methods'             => \WP_REST_Server::READABLE,
+            'callback'            => [ $this, 'handleChallenge' ],
+            'permission_callback' => '__return_true',
+        ] );
+    }
+
+    public function handleChallenge( \WP_REST_Request $request ): \WP_REST_Response {
+        $type       = (string) $request->get_param( 'type' );
+        $routingKey = (string) $request->get_param( 'key' );
+
+        if ( ! $this->registry->has( $type ) ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 404 );
+        }
+        $channel = $this->channelRepo->resolveByRoutingKey( $routingKey );
+        if ( null === $channel || (string) $channel['channel_type'] !== $type ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 404 );
+        }
+
+        $adapter = $this->registry->get( $type );
+        if ( ! $adapter instanceof \Infouno\SaaS\Channel\WebhookChallengeInterface ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 404 );
+        }
+
+        $challenge = $adapter->verifyChallenge( $request, $channel );
+        if ( null === $challenge ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 403 );
+        }
+
+        // Meta hace un match EXACTO del body contra el hub.challenge que envió.
+        // WP_REST_Server serializa la data como JSON, así que un string saldría
+        // entrecomillado ("C-123") y la verificación fallaría. Cortocircuitamos la
+        // serialización para emitir el challenge crudo en text/plain.
+        add_filter(
+            'rest_pre_serve_request',
+            static function ( $served, $result ) use ( $challenge ) {
+                if ( ! headers_sent() ) {
+                    header( 'Content-Type: text/plain; charset=UTF-8' );
+                }
+                echo $challenge;
+                return true;
+            },
+            10,
+            2
+        );
+
+        return new \WP_REST_Response( $challenge, 200 );
     }
 
     public function handle( \WP_REST_Request $request ): \WP_REST_Response {
@@ -52,10 +101,15 @@ final class ChannelWebhookController {
         }
 
         $payload = (array) $request->get_json_params();
+        $inbound = $adapter->parseInbound( $payload );
+
+        // Sin mensaje procesable (status, receipts, eventos no-mensaje): nada que encolar.
+        if ( null === $inbound ) {
+            return new \WP_REST_Response( [ 'ok' => true, 'ignored' => true ], 200 );
+        }
 
         // Idempotencia: descartar retries del proveedor.
-        $inbound = $adapter->parseInbound( $payload );
-        if ( null !== $inbound && ! $this->eventRepo->markIfNew( (int) $channel['id'], $type, $inbound->externalMsgId ) ) {
+        if ( ! $this->eventRepo->markIfNew( (int) $channel['id'], $type, $inbound->externalMsgId ) ) {
             return new \WP_REST_Response( [ 'ok' => true, 'dup' => true ], 200 );
         }
 

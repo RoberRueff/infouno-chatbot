@@ -9,6 +9,7 @@ use Infouno\SaaS\Bot\QuotaService;
 use Infouno\SaaS\Chat\ChatService;
 use Infouno\SaaS\Chat\ConversationRepository;
 use Infouno\SaaS\Tenant\TenantManager;
+use Infouno\SaaS\API\ChannelWebhookController;
 use Infouno\SaaS\API\OpportunityController;
 
 /**
@@ -23,8 +24,9 @@ final class RestRouter {
     private ChatController        $chatController;
     private SessionController     $sessionController;
     private ConsentController     $consentController;
-    private LeadController        $leadController;
-    private OpportunityController $opportunityController;
+    private LeadController           $leadController;
+    private OpportunityController    $opportunityController;
+    private ChannelWebhookController $channelWebhookController;
 
     public function __construct(
         private readonly TenantManager          $tenantManager,
@@ -34,13 +36,15 @@ final class RestRouter {
         private readonly ConversationRepository $conversationRepo,
         LeadController                          $leadController,
         OpportunityController                   $opportunityController,
+        ChannelWebhookController                $channelWebhookController,
     ) {
-        $this->botController         = new BotController( $this->botManager, $this->tenantManager );
-        $this->chatController        = new ChatController( $this->chatService, $this->botManager );
-        $this->sessionController     = new SessionController( $this->botManager, $this->conversationRepo );
-        $this->consentController     = new ConsentController( $this->botManager, $this->conversationRepo );
-        $this->leadController        = $leadController;
-        $this->opportunityController = $opportunityController;
+        $this->botController            = new BotController( $this->botManager, $this->tenantManager );
+        $this->chatController           = new ChatController( $this->chatService, $this->botManager );
+        $this->sessionController        = new SessionController( $this->botManager, $this->conversationRepo );
+        $this->consentController        = new ConsentController( $this->botManager, $this->conversationRepo );
+        $this->leadController           = $leadController;
+        $this->opportunityController    = $opportunityController;
+        $this->channelWebhookController = $channelWebhookController;
     }
 
     public function register(): void {
@@ -76,6 +80,7 @@ final class RestRouter {
         $this->consentController->registerRoutes( self::NAMESPACE );
         $this->leadController->registerRoutes( self::NAMESPACE );
         $this->opportunityController->registerRoutes( self::NAMESPACE );
+        $this->channelWebhookController->registerRoutes( self::NAMESPACE );
     }
 
     public function health( \WP_REST_Request $request ): \WP_REST_Response {

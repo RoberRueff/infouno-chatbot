@@ -1,0 +1,73 @@
+<?php
+declare(strict_types=1);
+
+namespace Infouno\SaaS\API;
+
+use Infouno\SaaS\Channel\ChannelEventRepository;
+use Infouno\SaaS\Channel\ChannelRegistry;
+use Infouno\SaaS\Channel\ChannelRepository;
+
+/**
+ * Endpoint de webhooks de canales: /infouno/v1/channels/{type}/{key}.
+ *
+ * permission_callback __return_true (igual que /chat): la autorización real es la
+ * verificación de firma del canal dentro del handler. Responde 200 de inmediato y
+ * delega el procesamiento a Action Scheduler para no exceder el timeout del proveedor.
+ */
+final class ChannelWebhookController {
+
+    public function __construct(
+        private readonly ChannelRegistry        $registry,
+        private readonly ChannelRepository      $channelRepo,
+        private readonly ChannelEventRepository $eventRepo,
+    ) {}
+
+    public function registerRoutes( string $namespace ): void {
+        register_rest_route( $namespace, '/channels/(?P<type>[a-z]+)/(?P<key>[A-Za-z0-9_\-]+)', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'handle' ],
+            'permission_callback' => '__return_true',
+        ] );
+    }
+
+    public function handle( \WP_REST_Request $request ): \WP_REST_Response {
+        $type       = (string) $request->get_param( 'type' );
+        $routingKey = (string) $request->get_param( 'key' );
+
+        if ( ! $this->registry->has( $type ) ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 404 );
+        }
+
+        $channel = $this->channelRepo->resolveByRoutingKey( $routingKey );
+        if ( null === $channel || (string) $channel['channel_type'] !== $type ) {
+            return new \WP_REST_Response( [ 'ok' => false ], 404 );
+        }
+
+        $adapter = $this->registry->get( $type );
+
+        // Verificación de firma del proveedor — autorización real del endpoint.
+        if ( ! $adapter->verifyWebhook( $request, $channel ) ) {
+            error_log( sprintf( '[INFOUNO-CHANNEL] Firma inválida en webhook %s (canal %d).', $type, (int) $channel['id'] ) );
+            return new \WP_REST_Response( [ 'ok' => false ], 403 );
+        }
+
+        $payload = (array) $request->get_json_params();
+
+        // Idempotencia: descartar retries del proveedor.
+        $inbound = $adapter->parseInbound( $payload );
+        if ( null !== $inbound && ! $this->eventRepo->markIfNew( $type, $inbound->externalMsgId ) ) {
+            return new \WP_REST_Response( [ 'ok' => true, 'dup' => true ], 200 );
+        }
+
+        // Encolar el procesamiento en background. Ack inmediato al proveedor.
+        if ( function_exists( 'as_enqueue_async_action' ) ) {
+            as_enqueue_async_action(
+                'infouno_process_inbound',
+                [ 'channel_id' => (int) $channel['id'], 'payload' => $payload ],
+                'infouno-channels'
+            );
+        }
+
+        return new \WP_REST_Response( [ 'ok' => true ], 200 );
+    }
+}

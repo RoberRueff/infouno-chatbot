@@ -23,6 +23,7 @@ use Infouno\SaaS\Channel\ChannelRepository;
 use Infouno\SaaS\Channel\Http\WpHttpClient;
 use Infouno\SaaS\Channel\InboundDispatcher;
 use Infouno\SaaS\Channel\TelegramAdapter;
+use Infouno\SaaS\Channel\WhatsAppAdapter;
 use Infouno\SaaS\Chat\ChatPipeline;
 use Infouno\SaaS\Chat\ChatService;
 use Infouno\SaaS\Chat\ConversationRepository;
@@ -124,6 +125,7 @@ final class Plugin {
             $this->channelEventRepository = new ChannelEventRepository();
             $this->channelRegistry        = new ChannelRegistry();
             $this->channelRegistry->register( new TelegramAdapter( $vault, new WpHttpClient() ) );
+            $this->channelRegistry->register( new WhatsAppAdapter( $vault, new WpHttpClient() ) );
 
             $pipeline = new ChatPipeline(
                 $this->tenantManager,

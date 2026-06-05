@@ -19,6 +19,11 @@ final class Activator {
             wp_schedule_event( time(), 'hourly', 'infouno_reset_monthly_quotas' );
         }
 
+        // Cron diario: purga eventos de idempotencia de canales antiguos
+        if ( ! wp_next_scheduled( 'infouno_purge_channel_events' ) ) {
+            wp_schedule_event( time(), 'daily', 'infouno_purge_channel_events' );
+        }
+
         flush_rewrite_rules();
     }
 }

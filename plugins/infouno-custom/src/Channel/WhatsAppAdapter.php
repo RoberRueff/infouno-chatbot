@@ -101,6 +101,36 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
         }
     }
 
+    /**
+     * Parsea los eventos `statuses` del payload de Meta y devuelve un array de
+     * WhatsAppStatusEvent. Devuelve [] si el payload no contiene statuses o si
+     * los estados no son reconocidos. parseInbound() sigue devolviendo null para
+     * estos payloads (sin cambios en el contrato de ChannelAdapterInterface).
+     *
+     * @param  array<string,mixed> $payload
+     * @return WhatsAppStatusEvent[]
+     */
+    public function parseStatuses( array $payload ): array {
+        $value    = $payload['entry'][0]['changes'][0]['value'] ?? null;
+        $statuses = is_array( $value ) ? ( $value['statuses'] ?? null ) : null;
+        if ( ! is_array( $statuses ) ) {
+            return [];
+        }
+
+        $events = [];
+        foreach ( $statuses as $raw ) {
+            if ( ! is_array( $raw ) ) {
+                continue;
+            }
+            $event = WhatsAppStatusEvent::fromStatusArray( $raw );
+            if ( WhatsAppStatusEvent::isKnownStatus( $event->status ) ) {
+                $events[] = $event;
+            }
+        }
+
+        return $events;
+    }
+
     public function splitMessage( string $text ): array {
         if ( '' === $text ) {
             return [ '' ];

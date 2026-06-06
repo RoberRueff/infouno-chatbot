@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'preact/hooks'
-import { streamChat, recordLeadConsent } from '../api/client'
+import { recordLeadConsent } from '../api/client'
+import { deliverChat } from '../api/deliver'
 import { getSessionId } from './useSession'
 import type { Message, ChatStatus, WidgetConfig, LeadScopes } from '../types'
 
@@ -73,51 +74,49 @@ export function useChat( config: WidgetConfig ) {
 
     let started = false
 
-    await streamChat(
-      config.apiUrl,
-      config.botToken,
-      getSessionId(),
-      text,
-      {
-        onDelta( delta ) {
-          if ( ! started ) {
-            started = true
-            setStatus( 'streaming' )
-          }
-          setMessages( ( prev: Message[] ) =>
-            prev.map( ( m: Message ) =>
-              m.id === botMsg.id
-                ? { ...m, content: m.content + delta, pending: true }
-                : m
-            )
+    await deliverChat( {
+      apiUrl:    config.apiUrl,
+      botToken:  config.botToken,
+      sessionId: getSessionId(),
+      message:   text,
+      signal:    controller.signal,
+      onDelta( delta ) {
+        if ( ! started ) {
+          started = true
+          setStatus( 'streaming' )
+        }
+        setMessages( ( prev: Message[] ) =>
+          prev.map( ( m: Message ) =>
+            m.id === botMsg.id
+              ? { ...m, content: m.content + delta, pending: true }
+              : m
           )
-        },
-        onDone() {
-          setMessages( ( prev: Message[] ) =>
-            prev.map( ( m: Message ) =>
-              m.id === botMsg.id ? { ...m, pending: false } : m
-            )
-          )
-          setStatus( 'idle' )
-        },
-        onError( message ) {
-          setMessages( ( prev: Message[] ) =>
-            prev.map( ( m: Message ) =>
-              m.id === botMsg.id
-                ? { ...m, role: 'error', content: message, pending: false }
-                : m
-            )
-          )
-          setStatus( 'error' )
-          setTimeout( () => setStatus( 'idle' ), 4000 )
-        },
-        onRetry() {
-          // El bot placeholder sigue visible (pending: true) mientras se reintenta.
-          setStatus( 'retrying' )
-        },
+        )
       },
-      controller.signal
-    )
+      onDone() {
+        setMessages( ( prev: Message[] ) =>
+          prev.map( ( m: Message ) =>
+            m.id === botMsg.id ? { ...m, pending: false } : m
+          )
+        )
+        setStatus( 'idle' )
+      },
+      onError( message ) {
+        setMessages( ( prev: Message[] ) =>
+          prev.map( ( m: Message ) =>
+            m.id === botMsg.id
+              ? { ...m, role: 'error', content: message, pending: false }
+              : m
+          )
+        )
+        setStatus( 'error' )
+        setTimeout( () => setStatus( 'idle' ), 4000 )
+      },
+      onRetry() {
+        // El bot placeholder sigue visible (pending: true) mientras se reintenta.
+        setStatus( 'retrying' )
+      },
+    } )
   }, [ config ] )
 
   /**

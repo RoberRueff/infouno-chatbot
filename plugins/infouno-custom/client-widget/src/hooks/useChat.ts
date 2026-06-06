@@ -80,6 +80,7 @@ export function useChat( config: WidgetConfig ) {
       sessionId: getSessionId(),
       message:   text,
       signal:    controller.signal,
+      firstChunkTimeoutMs: config.firstChunkTimeoutMs,
       onDelta( delta ) {
         if ( ! started ) {
           started = true

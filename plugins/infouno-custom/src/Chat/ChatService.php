@@ -68,4 +68,38 @@ final class ChatService {
             PipelineContext::web()
         );
     }
+
+    /**
+     * Variante de entrega completa (no-streaming): ejecuta el pipeline con un
+     * BufferedSink y devuelve la respuesta entera. La usa ChatController cuando
+     * el cliente pide ?mode=full (fallback anti-buffering de hosting compartido).
+     * Reusa exactamente la misma generación del LLM — nunca se re-ejecuta.
+     *
+     * @param  array<string,mixed> $bot Bot pre-validado por ChatController.
+     * @throws \RuntimeException Con código HTTP semántico en validaciones fallidas.
+     */
+    public function handleBuffered(
+        array  $bot,
+        string $sessionId,
+        string $userMessage,
+        string $origin
+    ): string {
+        if ( ! $this->botManager->validateOrigin( $bot, $origin ) ) {
+            throw new \RuntimeException( 'Origen no autorizado para este bot.', 403 );
+        }
+
+        $pipeline = new ChatPipeline(
+            $this->tenantManager,
+            $this->botManager,
+            $this->quotaService,
+            $this->conversationRepo,
+            $this->llmRouter,
+            $this->leadService,
+        );
+
+        $sink = new BufferedSink();
+        $pipeline->run( $bot, $sessionId, $userMessage, $sink, PipelineContext::web() );
+
+        return $sink->getBuffer();
+    }
 }

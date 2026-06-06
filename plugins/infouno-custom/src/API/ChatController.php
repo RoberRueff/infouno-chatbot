@@ -6,6 +6,8 @@ namespace Infouno\SaaS\API;
 
 use Infouno\SaaS\Bot\BotManager;
 use Infouno\SaaS\Chat\ChatService;
+use Infouno\SaaS\Chat\DeliveryMode;
+use Infouno\SaaS\Chat\DeliveryTelemetry;
 
 /**
  * Endpoint SSE de chat — /infouno/v1/chat.
@@ -63,11 +65,16 @@ final class ChatController {
                         mb_strlen( $v ) <= self::MAX_MESSAGE_CHARS
                     ),
                 ],
+                'mode' => [
+                    'type'              => 'string',
+                    'required'          => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
             ],
         ] );
     }
 
-    public function stream( \WP_REST_Request $request ): ?\WP_Error {
+    public function stream( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error|null {
         $botToken  = $request->get_param( 'bot_token' );
         $sessionId = $request->get_param( 'session_id' );
         $message   = $request->get_param( 'message' );
@@ -78,6 +85,11 @@ final class ChatController {
         $result = $this->preValidate( $botToken, $origin );
         if ( $result instanceof \WP_Error ) {
             return $result;
+        }
+
+        // Entrega completa (fallback anti-buffering): JSON normal, sin SSE.
+        if ( DeliveryMode::FULL === DeliveryMode::fromRequest( $request->get_param( 'mode' ) ) ) {
+            return $this->respondFull( $result, $sessionId, $message, $origin );
         }
 
         $this->initSSE( $origin );
@@ -135,6 +147,36 @@ final class ChatController {
         }
 
         return $bot;
+    }
+
+    /**
+     * Entrega completa no-streaming. Corre el pipeline con BufferedSink y
+     * devuelve un JSON { reply, status }. Reutiliza la misma generación del LLM.
+     *
+     * @param array<string,mixed> $bot Bot ya validado por preValidate().
+     */
+    private function respondFull( array $bot, string $sessionId, string $message, string $origin ): \WP_REST_Response {
+        try {
+            $reply = $this->chatService->handleBuffered( $bot, $sessionId, $message, $origin );
+        } catch ( \RuntimeException $e ) {
+            $this->logSecurityEvent( $e );
+            return new \WP_REST_Response(
+                [ 'code' => $e->getCode(), 'message' => $this->safeErrorMessage( $e ) ],
+                $this->httpStatusFor( $e->getCode() )
+            );
+        }
+
+        error_log( DeliveryTelemetry::logLine( DeliveryMode::FULL, (int) ( $bot['id'] ?? 0 ) ) );
+
+        return new \WP_REST_Response( [ 'reply' => $reply, 'status' => 'complete' ], 200 );
+    }
+
+    /**
+     * Mapea el código semántico de la excepción a un status HTTP válido.
+     * Los códigos de negocio (402/403/422/429/503) ya son status HTTP; el resto → 500.
+     */
+    private function httpStatusFor( int $code ): int {
+        return array_key_exists( $code, self::ERROR_MESSAGES ) ? $code : 500;
     }
 
     private function initSSE( string $origin = '' ): void {

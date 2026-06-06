@@ -175,6 +175,36 @@ export async function revokeConsent(
 }
 
 /**
+ * Entrega completa no-streaming: POST a ?mode=full, devuelve la respuesta entera.
+ * Fallback cuando el SSE no streamea (hosting que bufferea). Reusa la misma
+ * generación server-side — no re-ejecuta el LLM.
+ */
+export async function fetchFull(
+  apiUrl:    string,
+  botToken:  string,
+  sessionId: string,
+  message:   string,
+  signal:    AbortSignal
+): Promise<string> {
+  const url = apiUrl + ( apiUrl.includes( '?' ) ? '&' : '?' ) + 'mode=full'
+
+  const res = await fetch( url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify( { bot_token: botToken, session_id: sessionId, message } ),
+    signal,
+  } )
+
+  const data = await res.json().catch( () => ( {} ) ) as Record<string, unknown>
+
+  if ( ! res.ok || data['code'] ) {
+    throw new Error( ( data['message'] as string ) ?? 'El servidor no pudo procesar la solicitud.' )
+  }
+
+  return ( data['reply'] as string ) ?? ''
+}
+
+/**
  * @deprecated Usar revokeConsent() — cubre mensajes + leads PII + consent flags.
  * Mantenida para compatibilidad con integraciones externas que llamen DELETE /session directamente.
  */

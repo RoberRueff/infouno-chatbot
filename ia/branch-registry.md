@@ -10,9 +10,9 @@
 | Campo | Valor |
 |-------|-------|
 | Branch principal | `main` |
-| DB Version activa | `v6` |
-| Fase de producto | **Fase 1 completada → Inicio Fase 2** |
-| Última actualización | 2026-06-02 |
+| DB Version activa | `v9` |
+| Fase de producto | **Fase 2 en curso** (Opportunity + Automation + Canales + transporte web) |
+| Última actualización | 2026-06-06 |
 
 ---
 
@@ -20,19 +20,33 @@
 
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
-| `main` | ✅ Estable | Branch principal — v6 Lead Engine completo | 2026-06-02 |
+| `main` | ✅ Estable | Branch principal — v9: Lead + Opportunity + Automation + Canales + transporte SSE→Full | 2026-06-06 |
+
+> Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
 
 ---
 
-## Branches Planificados (Fase 2)
+## Capas completadas (en `main`)
+
+| Capa / Feature | Versión | Estado |
+|----------------|---------|--------|
+| Conversation Layer + Lead Engine | v6 | ✅ |
+| Lead Engine v2: temperatura BANT + intent_signals | v7 | ✅ |
+| Opportunity Engine (pipeline stages, estimated_value) | v8 | ✅ |
+| Sales Automation (email + webhook, automation_logs) | v8 | ✅ |
+| Canales sociales (WhatsApp Cloud API + Telegram) | v9 | ✅ |
+| Transporte web SSE→Full (Bloque A) + spec §A.3 | v9 (sin cambio de schema) | ✅ |
+
+---
+
+## Branches Planificados (siguiente)
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/opportunity-engine` | feature | 🔴 Alta | Opportunity Engine: tablas v7 + PHP + API REST + panel admin |
-| `migration/v7-opportunities` | migration | 🔴 Alta | `wp_infouno_opportunities` + `wp_infouno_automation_logs` |
+| `feature/whatsapp-hardening` | feature | 🔴 Alta | **Bloque B**: recibos de estado, clasificación de errores Graph, ventana 24h, templates (`migration/v10`) |
+| `feature/tenant-isolation-fail-closed` | feature | 🔴 Alta | **Bloque D**: `TenantScopedRepository` + guard estático en CI (sin cambio de schema) |
 | `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
-| `feature/sales-automation-email` | feature | 🟡 Media | Secuencias de email (nurturing post-lead por stage) |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |
 
 ---
@@ -59,7 +73,10 @@ docs/[area]-[descripcion]                  → solo documentación
 | v4 | Tabla consents (Ley 25.326). Soft delete en conversations y messages (deleted_at) |
 | v5 | scope en consents. Tabla leads (Lead Engine). Tabla lead_consents (PII granular) |
 | v6 | status 'interested' en leads. page_url en leads. quick_replies + whatsapp_number en bot settings |
-| **v7 (planeado)** | **wp_infouno_opportunities + wp_infouno_automation_logs (Fase 2)** |
+| v7 | temperature ENUM + intent_signals JSON (BANT) en wp_infouno_leads |
+| v8 | wp_infouno_opportunities + wp_infouno_automation_logs (Opportunity Engine + Sales Automation) |
+| v9 | wp_infouno_channels + wp_infouno_channel_events + columnas channel/external_user en conversations y channel en consents (Canales sociales) |
+| **v10 (planeado)** | **wp_infouno_channel_templates + wp_infouno_channel_deliveries (Bloque B WhatsApp hardening)** |
 
 ---
 

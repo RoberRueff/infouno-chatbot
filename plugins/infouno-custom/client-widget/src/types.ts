@@ -14,6 +14,8 @@ export interface WidgetConfig {
   quickReplies?: QuickReply[]
   /** Número de WhatsApp del negocio para escalación directa (ej: +5491112345678) */
   whatsapp?:    string
+  /** Timeout (ms) al primer chunk SSE antes de caer a entrega completa (default 4000) */
+  firstChunkTimeoutMs?: number
 }
 
 /** Botón de respuesta rápida que el usuario puede clickear en lugar de escribir. */

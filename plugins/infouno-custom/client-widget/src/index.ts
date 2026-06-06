@@ -11,6 +11,7 @@
  *   data-privacy-url  — URL de la política de privacidad del tenant
  *   data-whatsapp     — número de WhatsApp del negocio (ej: +5491112345678)
  *   data-quick-replies — JSON array de quick replies (ej: '[{"label":"Ver precios"}]')
+ *   data-first-chunk-timeout-ms — ms a esperar el primer chunk SSE antes de caer a entrega completa (default: 4000)
  */
 import { render, h } from 'preact'
 import { Widget }    from './widget'
@@ -36,6 +37,18 @@ import type { WidgetConfig, QuickReply } from './types'
     }
   }
 
+  // Parsea el timeout al primer chunk; solo se acepta un entero positivo.
+  let firstChunkTimeoutMs: number | undefined
+  const rawTimeout = script?.dataset.firstChunkTimeoutMs ?? ''
+  if ( rawTimeout ) {
+    const parsed = Number( rawTimeout )
+    if ( Number.isFinite( parsed ) && parsed > 0 ) {
+      firstChunkTimeoutMs = parsed
+    } else {
+      console.warn( '[infouno] data-first-chunk-timeout-ms debe ser un número positivo — se ignorará.' )
+    }
+  }
+
   const config: WidgetConfig = {
     botToken:     script?.dataset.botToken  ?? '',
     apiUrl:       rawApiUrl,
@@ -45,6 +58,7 @@ import type { WidgetConfig, QuickReply } from './types'
     privacyUrl:   script?.dataset.privacyUrl  || undefined,
     whatsapp:     script?.dataset.whatsapp    || undefined,
     quickReplies: quickReplies,
+    firstChunkTimeoutMs,
   }
 
   if ( ! config.botToken || ! config.apiUrl ) {

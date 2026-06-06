@@ -3,8 +3,17 @@ import { getPreferredMode, setPreferredMode } from './deliveryMode'
 import type { DeliveryMode } from './deliveryMode'
 
 /**
+ * Probabilidad de reintentar SSE aunque el host esté recordado como 'full'.
+ * Evita quedar pegado en 'full' para siempre si el hosting mejora su soporte de
+ * streaming: ~1 de cada 10 sesiones vuelve a probar SSE y, si funciona, actualiza
+ * el modo recordado a 'sse'.
+ */
+const RETRY_SSE_PROBABILITY = 0.1
+
+/**
  * Orquesta la entrega de una respuesta de chat con degradación automática:
- *   1. Si el host ya demostró que bufferea (modo recordado = 'full') → full directo.
+ *   1. Si el host ya demostró que bufferea (modo recordado = 'full') → full directo,
+ *      salvo un reintento periódico de SSE (ver RETRY_SSE_PROBABILITY).
  *   2. Si no, intenta SSE con timeout al primer chunk. Si el primer fragmento no
  *      llega a tiempo (proxy que bufferea), aborta y cae a ?mode=full.
  *   3. Persiste el modo ganador por host para no re-pagar el timeout cada vez.
@@ -26,6 +35,8 @@ export interface DeliverOptions {
   fullImpl?:            typeof fetchFull
   getMode?:             ( apiUrl: string ) => DeliveryMode | null
   setMode?:             ( apiUrl: string, mode: DeliveryMode ) => void
+  /** Decide si reintentar SSE pese a un modo 'full' recordado (default: azar 1/N). */
+  shouldRetrySse?:      () => boolean
 }
 
 export async function deliverChat( opts: DeliverOptions ): Promise<void> {
@@ -34,6 +45,7 @@ export async function deliverChat( opts: DeliverOptions ): Promise<void> {
   const fullImpl   = opts.fullImpl   ?? fetchFull
   const getMode    = opts.getMode    ?? getPreferredMode
   const setMode    = opts.setMode    ?? setPreferredMode
+  const shouldRetrySse = opts.shouldRetrySse ?? ( () => Math.random() < RETRY_SSE_PROBABILITY )
 
   const runFull = async (): Promise<void> => {
     try {
@@ -47,8 +59,9 @@ export async function deliverChat( opts: DeliverOptions ): Promise<void> {
     }
   }
 
-  // 1. Host conocido como buffering → full directo.
-  if ( getMode( opts.apiUrl ) === 'full' ) {
+  // 1. Host conocido como buffering → full directo, salvo reintento periódico de
+  //    SSE (si el reintento logra streamear, el onDone marcará el modo como 'sse').
+  if ( getMode( opts.apiUrl ) === 'full' && ! shouldRetrySse() ) {
     await runFull()
     return
   }

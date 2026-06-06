@@ -16,10 +16,17 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
     private const MAX_CHARS  = 4096;
     private const GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
+    /** Último wamid devuelto por la Graph API. Null si el envío falló o no hubo respuesta. */
+    private ?string $lastWamid = null;
+
     public function __construct(
         private readonly CredentialVault   $vault,
         private readonly ChannelHttpClient $http,
     ) {}
+
+    public function lastWamid(): ?string {
+        return $this->lastWamid;
+    }
 
     public function type(): string {
         return 'whatsapp';
@@ -83,6 +90,8 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
 
         $url = self::GRAPH_BASE . '/' . $pnid . '/messages';
 
+        $this->lastWamid = null;
+
         foreach ( $this->splitMessage( $text ) as $chunk ) {
             $res = $this->http->postJson(
                 $url,
@@ -97,6 +106,14 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
             $code = (int) ( $res['code'] ?? 0 );
             if ( 0 === $code || $code >= 400 ) {
                 error_log( '[INFOUNO-CHANNEL] WhatsApp send falló: HTTP ' . $code );
+            } else {
+                $decoded = json_decode( (string) ( $res['body'] ?? '' ), true );
+                if ( is_array( $decoded ) ) {
+                    $wamid = $decoded['messages'][0]['id'] ?? null;
+                    if ( is_string( $wamid ) && '' !== $wamid ) {
+                        $this->lastWamid = $wamid;
+                    }
+                }
             }
         }
     }

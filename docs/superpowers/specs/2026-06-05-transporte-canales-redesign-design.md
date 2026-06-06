@@ -123,9 +123,11 @@ Hoy `send()` solo hace `error_log` ante HTTP >= 400.
   - **Ventana abierta** → texto free-form (comportamiento actual).
   - **Ventana cerrada** → template con variables resueltas (formato `type: template` de la Graph API).
 
-### B.5 Esquema / migración (DB v9)
+### B.5 Esquema / migración (DB v10)
 
-Una migración **v9** (`migrateTo9()` en `Core\Migrator`, idempotente, sin `DROP`, `INFOUNO_DB_VERSION = '9'`):
+> **Corrección (2026-06-06):** la v9 ya está tomada por la migración de Canales (Fase 1: `wp_infouno_channels` + `wp_infouno_channel_events`). Las tablas de Bloque B van en una migración **v10**.
+
+Una migración **v10** (`migrateTo10()` en `Core\Migrator`, idempotente, sin `DROP`, `INFOUNO_DB_VERSION = '10'`):
 
 - **`wp_infouno_channel_templates`** (ver B.4).
 - **`wp_infouno_channel_deliveries`** (estado de salientes) — **decisión tomada: tabla dedicada, NO columna en `messages`.**
@@ -146,7 +148,7 @@ Una migración **v9** (`migrateTo9()` en `Core\Migrator`, idempotente, sin `DROP
 - Cálculo del estado de ventana (< 24h vs >= 24h) a partir del último inbound.
 - Selección free-form vs template según estado de ventana.
 - Resolver de variables de template.
-- Migración v9 idempotente (correr dos veces no rompe).
+- Migración v10 idempotente (correr dos veces no rompe).
 
 ---
 
@@ -161,8 +163,8 @@ Una migración **v9** (`migrateTo9()` en `Core\Migrator`, idempotente, sin `DROP
 | `Channel/WhatsAppAdapter.php` | `parseStatuses()`; captura de `wamid` en `send()`; clasificación de errores Graph; bifurcación free-form vs template. |
 | `Channel/InboundDispatcher.php` | Ruteo de eventos `status` al registro de entregas. |
 | `Channel/` (nuevos) | `ChannelDeliveryRepository`, `ChannelTemplateRepository`, resolver de variables, helper de ventana 24h. |
-| `Core/Migrator.php` | `migrateTo9()`: `channel_templates` + `channel_deliveries`. `INFOUNO_DB_VERSION = '9'`. |
-| `ia/` | Sincronizar `taxonomy.md` / `architecture.md` / `branch-registry.md` (capa de canales, v9). |
+| `Core/Migrator.php` | `migrateTo10()`: `channel_templates` + `channel_deliveries`. `INFOUNO_DB_VERSION = '10'`. |
+| `ia/` | Sincronizar `taxonomy.md` / `architecture.md` / `branch-registry.md` (capa de canales, v10). |
 
 ---
 
@@ -176,7 +178,7 @@ Una migración **v9** (`migrateTo9()` en `Core\Migrator`, idempotente, sin `DROP
 ## 6. Reglas no negociables respetadas
 
 - Toda query SQL nueva incluye filtro `tenant_id`.
-- Migración solo en `Migrator.php`, sin `DROP`, `INFOUNO_DB_VERSION` incrementado a `9`.
+- Migración solo en `Migrator.php`, sin `DROP`, `INFOUNO_DB_VERSION` incrementado a `10`.
 - Nuevos endpoints (si `?mode=async` se construye en el futuro) solo en `RestRouter.php` con `permission_callback`.
 - El `bot_token` y credenciales de canal nunca en logs en texto plano.
 - Lead Engine sigue best-effort.

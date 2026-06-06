@@ -1,8 +1,10 @@
 # Arquitectura del Sistema — Plataforma de Automatización Comercial para PyMEs Argentinas
-## Versión 6.0 — Estado actual del producto
+## Versión 9.0 — Estado actual del producto
 
 > Leer este documento antes de cualquier cambio estructural, de base de datos o de flujo de datos.
-> Versión de BD activa: `INFOUNO_DB_VERSION = '8'`
+> Versión de BD activa: `INFOUNO_DB_VERSION = '9'`
+> Capas vivas: Conversation + Lead (v7) + Opportunity (v8) + Automation (v8) + Canales sociales (v9, WhatsApp/Telegram).
+> Transporte web: pipeline transport-agnostic (`ChatPipeline` + `OutputSink`) con entrega SSE y fallback `?mode=full` (Bloque A).
 
 ---
 
@@ -113,8 +115,11 @@ La plataforma implementa un funnel de cinco capas que transforma conversaciones 
 | Conversation Layer | Mensaje crudo del usuario | Respuesta LLM + tokens | ✅ v5 |
 | Lead Engine | Mensaje + historial | Lead con score 0-100 + PII consentida + temperatura BANT | ✅ v7 |
 | Opportunity Engine | Lead calificado (score ≥ 60) | Oportunidad con stage + valor | ✅ v8 |
-| Sales Automation | Evento de oportunidad | Email + webhook CRM + recordatorio | 🔲 Fase 2 |
+| Sales Automation | Evento de oportunidad | Email + webhook CRM | ✅ v8 |
+| Canales sociales | Webhook entrante (WhatsApp/Telegram) | Respuesta vía adapter (BufferedSink) | ✅ v9 |
 | Revenue Attribution | Conversión confirmada | ROI por bot + costo por lead | 🔲 Fase 3 |
+
+> **Transporte (Bloque A):** el pipeline de chat es transport-agnostic (`Chat\ChatPipeline` escribe en un `OutputSink`). Web usa `StreamingSink` (SSE) con un endpoint `?mode=full` que reusa `BufferedSink` (fallback anti-buffering, misma generación del LLM). Los canales usan `BufferedSink` vía `Channel\InboundDispatcher`. El widget detecta buffering por timeout al primer chunk y recuerda el modo por host.
 
 ### Contratos entre capas (hooks WP)
 

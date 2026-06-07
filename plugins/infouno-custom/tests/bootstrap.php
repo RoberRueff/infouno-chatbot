@@ -102,7 +102,10 @@ class WpdbStub extends \wpdb {
         if ( is_callable( $this->onInsert ) ) {
             ( $this->onInsert )( $table, $data );
         }
-        $this->insert_id = 1;
+        // Only set a default insert_id when no value was preset by the test.
+        if ( $this->insert_id === 0 ) {
+            $this->insert_id = 1;
+        }
         return 1;
     }
 

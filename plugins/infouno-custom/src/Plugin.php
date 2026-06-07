@@ -171,7 +171,7 @@ final class Plugin {
 
         // ── Admin ────────────────────────────────────────────────────────────
         $this->botDashboard         = new BotDashboard( $this->botManager, $this->tenantManager );
-        $this->leadDashboard        = new LeadDashboard( $this->tenantManager );
+        $this->leadDashboard        = new LeadDashboard( $this->tenantManager, $this->leadRepository );
         $this->opportunityDashboard = new OpportunityDashboard( $this->tenantManager, $this->opportunityRepo );
         $this->botWizard            = new BotWizard( $this->botManager, $this->tenantManager );
 

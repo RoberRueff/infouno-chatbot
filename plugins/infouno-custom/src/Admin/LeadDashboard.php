@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS\Admin;
 
+use Infouno\SaaS\Lead\LeadRepository;
+use Infouno\SaaS\Persistence\MissingTenantScopeException;
 use Infouno\SaaS\Tenant\TenantManager;
 
 /**
  * Panel de administración de leads capturados por el Lead Engine.
  * Visible para WP admins y usuarios con tenant activo (tenant_admin, tenant_agent).
- * Toda consulta filtra por tenant_id del usuario logueado — guardrail de aislamiento.
+ *
+ * Todo SQL vive en LeadRepository — este admin no usa $wpdb directamente.
+ * El tenant se resuelve fail-closed: sin tenant activo → HTTP 500 (bug de programación).
  */
 final class LeadDashboard {
 
@@ -26,7 +30,8 @@ final class LeadDashboard {
     ];
 
     public function __construct(
-        private readonly TenantManager $tenantManager,
+        private readonly TenantManager  $tenantManager,
+        private readonly LeadRepository $leadRepository,
     ) {}
 
     public function init(): void {
@@ -47,19 +52,17 @@ final class LeadDashboard {
     }
 
     public function renderPage(): void {
-        global $wpdb;
-
-        $tenantId = $this->getCurrentTenantId();
-
-        if ( ! $tenantId ) {
+        try {
+            $tenantId = $this->requireTenantId();
+        } catch ( MissingTenantScopeException $e ) {
+            error_log( '[INFOUNO-LEAD] MissingTenantScopeException en LeadDashboard::renderPage(): ' . $e->getMessage() );
             wp_die(
-                esc_html__( 'No tenés un tenant activo asociado a tu cuenta.', 'infouno-custom' ),
-                esc_html__( 'Acceso denegado', 'infouno-custom' ),
-                [ 'response' => 403 ]
+                esc_html__( 'Error interno del servidor. Contacte al administrador.', 'infouno-custom' ),
+                esc_html__( 'Error', 'infouno-custom' ),
+                [ 'response' => 500 ]
             );
         }
 
-        // Mostrar mensaje de éxito si viene de actualización de estado
         if ( ! empty( $_GET['updated'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
             echo '<div class="notice notice-success is-dismissible"><p>' .
                  esc_html__( 'Estado del lead actualizado.', 'infouno-custom' ) .
@@ -71,45 +74,12 @@ final class LeadDashboard {
             $filterStatus = '';
         }
 
-        $leadsTable = $wpdb->prefix . 'infouno_leads';
-        $botsTable  = $wpdb->prefix . 'infouno_bots';
-
-        if ( $filterStatus ) {
-            $leads = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT l.id, l.name, l.email, l.phone, l.interest, l.score,
-                            l.status, l.source, l.notes, l.created_at, b.bot_name,
-                            CASE WHEN l.score >= 80 THEN 'Alta'
-                                 WHEN l.score >= 60 THEN 'Media'
-                                 ELSE 'Baja' END AS prioridad
-                     FROM `{$leadsTable}` l
-                     INNER JOIN `{$botsTable}` b ON b.id = l.bot_id AND b.tenant_id = l.tenant_id
-                     WHERE l.tenant_id = %d AND l.status = %s
-                     ORDER BY l.score DESC, l.created_at DESC
-                     LIMIT 100",
-                    $tenantId,
-                    $filterStatus
-                ),
-                ARRAY_A
-            );
-        } else {
-            $leads = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT l.id, l.name, l.email, l.phone, l.interest, l.score,
-                            l.status, l.source, l.notes, l.created_at, b.bot_name,
-                            CASE WHEN l.score >= 80 THEN 'Alta'
-                                 WHEN l.score >= 60 THEN 'Media'
-                                 ELSE 'Baja' END AS prioridad
-                     FROM `{$leadsTable}` l
-                     INNER JOIN `{$botsTable}` b ON b.id = l.bot_id AND b.tenant_id = l.tenant_id
-                     WHERE l.tenant_id = %d
-                     ORDER BY l.score DESC, l.created_at DESC
-                     LIMIT 100",
-                    $tenantId
-                ),
-                ARRAY_A
-            );
-        }
+        $leads = $this->leadRepository->listForTenant(
+            tenantId: $tenantId,
+            status:   '' !== $filterStatus ? $filterStatus : null,
+            limit:    100,
+            offset:   0,
+        );
 
         $leads          = $leads ?: [];
         $totalLeads     = count( $leads );
@@ -225,34 +195,20 @@ final class LeadDashboard {
 
     /**
      * Exporta los leads del tenant como archivo CSV con BOM UTF-8.
-     * Compatible con Excel en Windows (BOM necesario para acentos).
      */
     public function exportCsv(): void {
         if ( ! check_admin_referer( self::NONCE_EXPORT ) ) {
             wp_die( esc_html__( 'Nonce inválido.', 'infouno-custom' ), 403 );
         }
 
-        $tenantId = $this->getCurrentTenantId();
-        if ( ! $tenantId ) {
-            wp_die( esc_html__( 'Sin acceso.', 'infouno-custom' ), 403 );
+        try {
+            $tenantId = $this->requireTenantId();
+        } catch ( MissingTenantScopeException $e ) {
+            error_log( '[INFOUNO-LEAD] MissingTenantScopeException en LeadDashboard::exportCsv(): ' . $e->getMessage() );
+            wp_die( esc_html__( 'Error interno del servidor.', 'infouno-custom' ), 500 );
         }
 
-        global $wpdb;
-
-        $leads = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT l.created_at, b.bot_name, l.name, l.email, l.phone,
-                        l.interest, l.score, l.status, l.notes
-                 FROM `{$wpdb->prefix}infouno_leads` l
-                 INNER JOIN `{$wpdb->prefix}infouno_bots` b
-                    ON b.id = l.bot_id AND b.tenant_id = l.tenant_id
-                 WHERE l.tenant_id = %d
-                 ORDER BY l.score DESC, l.created_at DESC",
-                $tenantId
-            ),
-            ARRAY_A
-        );
-
+        $leads    = $this->leadRepository->listForCsv( tenantId: $tenantId );
         $filename = 'infouno-leads-' . gmdate( 'Y-m-d' ) . '.csv';
 
         header( 'Content-Type: text/csv; charset=UTF-8' );
@@ -261,10 +217,7 @@ final class LeadDashboard {
         header( 'Pragma: no-cache' );
 
         $out = fopen( 'php://output', 'w' );
-
-        // BOM UTF-8 — necesario para que Excel en Windows muestre acentos correctamente
         fwrite( $out, "\xEF\xBB\xBF" );
-
         fputcsv( $out, [ 'Fecha', 'Bot', 'Nombre', 'Email', 'Teléfono', 'Interés', 'Score', 'Estado', 'Notas' ] );
 
         foreach ( $leads ?: [] as $lead ) {
@@ -287,7 +240,6 @@ final class LeadDashboard {
 
     /**
      * Actualiza el estado de un lead desde el formulario inline del panel.
-     * Verifica nonce y ownership antes de escribir.
      */
     public function updateLeadStatus(): void {
         $leadId = (int) ( $_POST['lead_id'] ?? $_GET['lead_id'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification
@@ -296,7 +248,13 @@ final class LeadDashboard {
             wp_die( esc_html__( 'Nonce inválido.', 'infouno-custom' ), 403 );
         }
 
-        $tenantId = $this->getCurrentTenantId();
+        try {
+            $tenantId = $this->requireTenantId();
+        } catch ( MissingTenantScopeException $e ) {
+            error_log( '[INFOUNO-LEAD] MissingTenantScopeException en LeadDashboard::updateLeadStatus(): ' . $e->getMessage() );
+            wp_die( esc_html__( 'Error interno del servidor.', 'infouno-custom' ), 500 );
+        }
+
         if ( ! $tenantId || ! $leadId ) {
             wp_safe_redirect( admin_url( 'admin.php?page=infouno-leads' ) );
             exit();
@@ -308,38 +266,12 @@ final class LeadDashboard {
             exit();
         }
 
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'infouno_leads';
-
-        // Verifica ownership — guardrail de aislamiento
-        $exists = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$table}` WHERE id = %d AND tenant_id = %d LIMIT 1",
-                $leadId,
-                $tenantId
-            )
-        );
-
-        if ( $exists ) {
-            $updateData    = [ 'status' => $status ];
-            $updateFormats = [ '%s' ];
-
-            if ( 'contacted' === $status ) {
-                $updateData['contacted_at'] = gmdate( 'Y-m-d H:i:s' );
-                $updateFormats[]            = '%s';
-            }
-            if ( 'converted' === $status ) {
-                $updateData['converted_at'] = gmdate( 'Y-m-d H:i:s' );
-                $updateFormats[]            = '%s';
-            }
-
-            $wpdb->update(
-                $table,
-                $updateData,
-                [ 'id' => $leadId, 'tenant_id' => $tenantId ],
-                $updateFormats,
-                [ '%d', '%d' ]
+        if ( $this->leadRepository->verifyOwnership( leadId: $leadId, tenantId: $tenantId ) ) {
+            $this->leadRepository->updateStatusForTenant(
+                leadId:   $leadId,
+                tenantId: $tenantId,
+                status:   $status,
+                notes:    null, // el dashboard no actualiza notes
             );
         }
 
@@ -347,8 +279,13 @@ final class LeadDashboard {
         exit();
     }
 
-    private function getCurrentTenantId(): int {
-        $tenant = $this->tenantManager->getForCurrentUser();
-        return $tenant ? (int) $tenant['id'] : 0;
+    /**
+     * Resuelve el tenant del usuario actual de forma fail-closed.
+     * Lanza MissingTenantScopeException si no hay tenant.
+     *
+     * @throws MissingTenantScopeException
+     */
+    private function requireTenantId(): int {
+        return (int) $this->tenantManager->requireForCurrentUser()['id'];
     }
 }

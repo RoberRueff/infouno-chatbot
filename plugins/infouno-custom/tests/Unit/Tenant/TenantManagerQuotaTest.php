@@ -11,6 +11,7 @@ final class TenantManagerQuotaTest extends TestCase {
     protected function setUp(): void {
         $GLOBALS['wpdb']->stub_query_result = 0;
         $GLOBALS['wpdb']->last_query        = '';
+        $GLOBALS['wpdb']->last_write_query  = '';
     }
 
     public function test_reserve_returns_true_when_update_affects_one_row(): void {
@@ -37,7 +38,9 @@ final class TenantManagerQuotaTest extends TestCase {
         // get_row para el chequeo de alerta 90%
         $GLOBALS['wpdb']->stub_get_row = [ 'quota_used' => 100, 'quota_limit' => 50000 ];
         ( new TenantManager() )->reconcile( 7, 1500, 320 );
-        $q = $GLOBALS['wpdb']->last_query;
+        // reconcile() calls query() (write) then get_row() (read). Use last_write_query
+        // to assert the UPDATE SQL without being overwritten by the subsequent SELECT.
+        $q = $GLOBALS['wpdb']->last_write_query;
         $this->assertStringContainsString( '- 1500 + 320', $q );
         $this->assertStringContainsString( 'GREATEST(0', $q );
     }

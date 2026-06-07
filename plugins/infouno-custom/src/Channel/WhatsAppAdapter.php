@@ -105,7 +105,19 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
             );
             $code = (int) ( $res['code'] ?? 0 );
             if ( 0 === $code || $code >= 400 ) {
-                error_log( '[INFOUNO-CHANNEL] WhatsApp send falló: HTTP ' . $code );
+                $decoded   = json_decode( (string) ( $res['body'] ?? '' ), true );
+                $errorBody = is_array( $decoded ) ? $decoded : [];
+                $ex        = WhatsAppGraphException::fromGraphError( $code, $errorBody );
+
+                error_log( sprintf(
+                    '[INFOUNO-CHANNEL] WhatsApp send error: HTTP %d | graphCode=%d | retryable=%s | %s',
+                    $code,
+                    $ex->graphCode(),
+                    $ex->isRetryable() ? 'yes' : 'no',
+                    $ex->getMessage()
+                ) );
+
+                throw $ex;
             } else {
                 $decoded = json_decode( (string) ( $res['body'] ?? '' ), true );
                 if ( is_array( $decoded ) ) {

@@ -80,18 +80,22 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: wp plugin activate infouno-custom --path=/tmp/wp
 
-      - name: Assert migration ran (v9 + columnas de canal)
+      - name: Assert migration ran (v10 + columnas de canal + tablas Bloque B)
         working-directory: ${{ github.workspace }}
         run: |
-          test "$(wp option get infouno_db_version --path=/tmp/wp)" = "9" \
-            || { echo "::error::infouno_db_version != 9"; exit 1; }
+          test "$(wp option get infouno_db_version --path=/tmp/wp)" = "10" \
+            || { echo "::error::infouno_db_version != 10"; exit 1; }
           wp eval --path=/tmp/wp '
             global $wpdb;
             $tbl = $wpdb->get_col("SHOW TABLES LIKE \"%infouno_channels\"");
             if (empty($tbl)) { fwrite(STDERR, "FALTA tabla wp_infouno_channels\n"); exit(1); }
+            $tpl = $wpdb->get_col("SHOW TABLES LIKE \"%infouno_channel_templates\"");
+            if (empty($tpl)) { fwrite(STDERR, "FALTA tabla wp_infouno_channel_templates (v10)\n"); exit(1); }
+            $del = $wpdb->get_col("SHOW TABLES LIKE \"%infouno_channel_deliveries\"");
+            if (empty($del)) { fwrite(STDERR, "FALTA tabla wp_infouno_channel_deliveries (v10)\n"); exit(1); }
             $col = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}infouno_conversations LIKE \"channel\"");
             if (empty($col)) { fwrite(STDERR, "FALTA columna conversations.channel (bug fresh-install)\n"); exit(1); }
-            echo "load-test OK: plugin activo, migracion v9, columnas de canal presentes\n";
+            echo "load-test OK: plugin activo, migracion v10, columnas de canal + tablas Bloque B presentes\n";
           '
 
       - name: Runtime check (cadena comercial + terminalidad + paneles admin)

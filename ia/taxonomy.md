@@ -19,7 +19,7 @@ WordPress como infraestructura SaaS Multitenant para gestión y despliegue de Ch
 | **Lead Engine** | `plugins/infouno-custom/src/Lead/` | `ia/rules/lead-engine.md` | Captura, scoring y gestión de leads comerciales. |
 | **Opportunity Engine** | `plugins/infouno-custom/src/Opportunity/` | `ia/rules/opportunity-engine.md` | Pipeline de oportunidades (stages, valor estimado, CRM sync). [✅ v8] |
 | **Sales Automation** | `plugins/infouno-custom/src/Automation/` | `ia/rules/opportunity-engine.md` | Email + webhook al CRM en eventos de pipeline. [✅ v8.5] |
-| **Canales Sociales** | `plugins/infouno-custom/src/Channel/` | `ia/rules/plugin-core.md` | Adapters de canal (WhatsApp Cloud API, Telegram): webhook entrante, idempotencia, credenciales cifradas, respuesta vía BufferedSink. [✅ v9] |
+| **Canales Sociales** | `plugins/infouno-custom/src/Channel/` | `ia/rules/plugin-core.md` | Adapters de canal (WhatsApp Cloud API, Telegram): webhook entrante, idempotencia, credenciales cifradas, respuesta vía BufferedSink. [✅ v9]. WhatsApp hardening: recibos de estado, wamid, clasificación de errores Graph, ventana 24h, templates. [✅ v10] |
 | **Chatbot Widget** | `plugins/infouno-custom/client-widget/` | `ia/rules/chatbot-widget.md` | Script Preact/TS embebido en sitios de clientes (Shadow DOM). Entrega SSE con fallback `?mode=full`. |
 | **Tema Panel/SaaS** | `themes/astra/` | `ia/rules/thema-astra.md` | Dashboard del tenant y landing page de la plataforma. |
 | **Admin Dashboard** | `plugins/infouno-custom/src/Admin/` | `ia/rules/lead-engine.md` | Panel WP Admin: leads, stats, export CSV. |
@@ -38,7 +38,7 @@ WordPress como infraestructura SaaS Multitenant para gestión y despliegue de Ch
 | `Infouno\SaaS\Lead` | `src/Lead/` | **Lead Engine**: LeadScorer, LeadService, LeadRepository |
 | `Infouno\SaaS\Opportunity` | `src/Opportunity/` | **Opportunity Engine** [v8]: OpportunityService, OpportunityRepository, pipeline stages |
 | `Infouno\SaaS\Automation` | `src/Automation/` | **Sales Automation** [v8.5]: AutomationEngine, NotificationDispatcher — email + webhook on pipeline events |
-| `Infouno\SaaS\Channel` | `src/Channel/` | **Canales sociales** [v9]: ChannelAdapterInterface, WhatsAppAdapter, TelegramAdapter, ChannelRegistry, InboundDispatcher, idempotencia (ChannelEventRepository) |
+| `Infouno\SaaS\Channel` | `src/Channel/` | **Canales sociales** [v9]: ChannelAdapterInterface, WhatsAppAdapter, TelegramAdapter, ChannelRegistry, InboundDispatcher, idempotencia (ChannelEventRepository). **WhatsApp hardening** [v10]: WhatsAppStatusEvent, WhatsAppGraphException, ChannelDeliveryRepository, ChannelTemplateRepository, WindowChecker, TemplateVariableResolver |
 | `Infouno\SaaS\Tenant` | `src/Tenant/` | Ciclo de vida de tenants, cuotas, planes |
 | `Infouno\SaaS\Security` | `src/Security/` | Validación de input, detección de prompt injection |
 | `Infouno\SaaS\Admin` | `src/Admin/` | Paneles WP Admin: LeadDashboard |

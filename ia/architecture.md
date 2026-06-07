@@ -1,10 +1,11 @@
 # Arquitectura del Sistema — Plataforma de Automatización Comercial para PyMEs Argentinas
-## Versión 9.0 — Estado actual del producto
+## Versión 10.0 — Estado actual del producto
 
 > Leer este documento antes de cualquier cambio estructural, de base de datos o de flujo de datos.
-> Versión de BD activa: `INFOUNO_DB_VERSION = '9'`
-> Capas vivas: Conversation + Lead (v7) + Opportunity (v8) + Automation (v8) + Canales sociales (v9, WhatsApp/Telegram).
+> Versión de BD activa: `INFOUNO_DB_VERSION = '10'`
+> Capas vivas: Conversation + Lead (v7) + Opportunity (v8) + Automation (v8) + Canales sociales (v9, WhatsApp/Telegram) + WhatsApp hardening (v10).
 > Transporte web: pipeline transport-agnostic (`ChatPipeline` + `OutputSink`) con entrega SSE y fallback `?mode=full` (Bloque A).
+> WhatsApp grado producción (Bloque B, v10): recibos de estado (`channel_deliveries` + wamid), clasificación de errores Graph (transitorio/permanente), ventana de 24h (`WindowChecker`), templates (`channel_templates` + `sendTemplate`).
 
 ---
 

@@ -10,9 +10,9 @@
 | Campo | Valor |
 |-------|-------|
 | Branch principal | `main` |
-| DB Version activa | `v9` |
-| Fase de producto | **Fase 2 en curso** (Opportunity + Automation + Canales + transporte web) |
-| Última actualización | 2026-06-06 |
+| DB Version activa | `v10` |
+| Fase de producto | **Fase 2 en curso** (Opportunity + Automation + Canales + transporte web + WhatsApp hardening) |
+| Última actualización | 2026-06-07 |
 
 ---
 
@@ -20,9 +20,10 @@
 
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
-| `main` | ✅ Estable | Branch principal — v9: Lead + Opportunity + Automation + Canales + transporte SSE→Full | 2026-06-06 |
+| `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening | 2026-06-07 |
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
+> `main` está varios commits adelante de `origin/main` (pendiente `git push`).
 
 ---
 
@@ -36,6 +37,7 @@
 | Sales Automation (email + webhook, automation_logs) | v8 | ✅ |
 | Canales sociales (WhatsApp Cloud API + Telegram) | v9 | ✅ |
 | Transporte web SSE→Full (Bloque A) + spec §A.3 | v9 (sin cambio de schema) | ✅ |
+| WhatsApp hardening (Bloque B): recibos de estado, clasificación de errores Graph, ventana 24h, templates, channel_deliveries | v10 | ✅ |
 
 ---
 
@@ -43,11 +45,11 @@
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/whatsapp-hardening` | feature | 🔴 Alta | **Bloque B**: recibos de estado, clasificación de errores Graph, ventana 24h, templates (`migration/v10`) |
 | `feature/tenant-isolation-fail-closed` | feature | 🔴 Alta | **Bloque D**: `TenantScopedRepository` + guard estático en CI (sin cambio de schema) |
 | `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |
+| — | feature | 🟢 Baja | Mensajería proactiva con templates (infra Bloque B lista; disparo llega con Sales Automation) |
 
 ---
 
@@ -76,7 +78,7 @@ docs/[area]-[descripcion]                  → solo documentación
 | v7 | temperature ENUM + intent_signals JSON (BANT) en wp_infouno_leads |
 | v8 | wp_infouno_opportunities + wp_infouno_automation_logs (Opportunity Engine + Sales Automation) |
 | v9 | wp_infouno_channels + wp_infouno_channel_events + columnas channel/external_user en conversations y channel en consents (Canales sociales) |
-| **v10 (planeado)** | **wp_infouno_channel_templates + wp_infouno_channel_deliveries (Bloque B WhatsApp hardening)** |
+| v10 | wp_infouno_channel_templates + wp_infouno_channel_deliveries (Bloque B WhatsApp hardening) |
 
 ---
 

@@ -235,6 +235,16 @@ if ( ! function_exists( 'add_filter' ) ) {
     }
 }
 
+if ( ! class_exists( 'WP_Error' ) ) {
+    class WP_Error {
+        public function __construct(
+            public string $code    = '',
+            public string $message = '',
+            public mixed  $data    = null,
+        ) {}
+    }
+}
+
 if ( ! function_exists( 'current_time' ) ) {
     function current_time( string $type, int $gmt = 0 ): string {
         return gmdate( 'Y-m-d H:i:s' );

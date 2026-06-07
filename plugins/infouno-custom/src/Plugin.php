@@ -164,7 +164,7 @@ final class Plugin {
             $this->quotaService,
             $this->chatService,
             $this->conversationRepo,
-            new LeadController( $this->tenantManager ),
+            new LeadController( $this->tenantManager, $this->leadRepository ),
             new OpportunityController( $this->opportunityService, $this->opportunityRepo, $this->tenantManager ),
             $webhookController,
         );

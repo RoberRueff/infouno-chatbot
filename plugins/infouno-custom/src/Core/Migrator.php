@@ -33,10 +33,15 @@ namespace Infouno\SaaS\Core;
  *   v8 — Opportunity Engine: tabla wp_infouno_opportunities (pipeline stages, estimated_value,
  *         timestamps won/lost, assigned_to). Tabla wp_infouno_automation_logs (registro de
  *         automatizaciones por oportunidad: email, webhook, WhatsApp).
+ *   v9 — Canales Sociales Fase 1: wp_infouno_channels + wp_infouno_channel_events.
+ *         Columnas channel + external_user en conversations; channel en consents.
+ *   v10 — WhatsApp Hardening (Bloque B): wp_infouno_channel_templates (plantillas Meta
+ *          aprobadas por tenant) + wp_infouno_channel_deliveries (estado de entregas
+ *          salientes con wamid de la Graph API).
  */
 final class Migrator {
 
-    const DB_VERSION        = '9';
+    const DB_VERSION        = '10';
     const DB_VERSION_OPTION = 'infouno_db_version';
 
     public function run(): void {
@@ -70,6 +75,10 @@ final class Migrator {
             $this->migrateTo9( $wpdb );
         }
 
+        if ( version_compare( $current, '1', '>=' ) && version_compare( $current, '10', '<' ) ) {
+            $this->migrateTo10( $wpdb, $charset );
+        }
+
         // Fresh install: crea todas las tablas que aún no existan (dbDelta es idempotente).
         $this->createTenantsTable( $wpdb, $charset );
         $this->createBotsTable( $wpdb, $charset );
@@ -82,6 +91,8 @@ final class Migrator {
         $this->createAutomationLogsTable( $wpdb, $charset );
         $this->createChannelsTable( $wpdb, $charset );
         $this->createChannelEventsTable( $wpdb, $charset );
+        $this->createChannelTemplatesTable( $wpdb, $charset );
+        $this->createChannelDeliveriesTable( $wpdb, $charset );
 
         $this->migrateQuotasToTokens( $wpdb );
 
@@ -628,6 +639,77 @@ final class Migrator {
             PRIMARY KEY  (id),
             UNIQUE KEY chan_msg (channel_id, external_msg_id),
             KEY received_at (received_at)
+        ) {$charset};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Upgrade path v9 → v10 — WhatsApp Hardening (Bloque B).
+     *
+     * Crea wp_infouno_channel_templates y wp_infouno_channel_deliveries.
+     * dbDelta() es idempotente — safe re-run.
+     */
+    private function migrateTo10( \wpdb $wpdb, string $charset ): void {
+        $this->createChannelTemplatesTable( $wpdb, $charset );
+        $this->createChannelDeliveriesTable( $wpdb, $charset );
+    }
+
+    /**
+     * Plantillas de WhatsApp aprobadas por Meta, por tenant/canal.
+     * El campo variables_schema almacena la definición de los placeholders (JSON).
+     * status: 'approved' = usable; 'pending' = en revisión; 'rejected' = no usable.
+     * Toda query debe filtrar tenant_id — guardrail multitenant.
+     */
+    private function createChannelTemplatesTable( \wpdb $wpdb, string $charset ): void {
+        $table = $wpdb->prefix . 'infouno_channel_templates';
+        $sql   = "CREATE TABLE {$table} (
+            id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id        INT UNSIGNED NOT NULL,
+            channel_id       INT UNSIGNED NOT NULL,
+            name             VARCHAR(191) NOT NULL,
+            language         VARCHAR(10)  NOT NULL DEFAULT 'es_AR',
+            variables_schema JSON         NULL,
+            status           ENUM('approved','pending','rejected') NOT NULL DEFAULT 'pending',
+            created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            KEY tenant_id  (tenant_id),
+            KEY channel_id (channel_id),
+            KEY status     (status)
+        ) {$charset};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Estado de mensajes salientes de WhatsApp.
+     * external_msg_id = wamid devuelto por la Graph API en send().
+     * message_id es NULL si la entrega no corresponde a un mensaje persistido.
+     * Toda query debe filtrar tenant_id — guardrail multitenant.
+     *
+     * Razón de tabla dedicada (no columna en messages): messages es compartida
+     * web + canales; columnas only-canal quedarían NULL para mensajes web.
+     * Una tabla aparte aísla el concern, permite transiciones de estado con
+     * timestamp, y mapea limpio por wamid. Costo: un join — trivial al volumen.
+     */
+    private function createChannelDeliveriesTable( \wpdb $wpdb, string $charset ): void {
+        $table = $wpdb->prefix . 'infouno_channel_deliveries';
+        $sql   = "CREATE TABLE {$table} (
+            id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id         INT UNSIGNED    NOT NULL,
+            channel_id        INT UNSIGNED    NOT NULL,
+            message_id        BIGINT UNSIGNED NULL,
+            external_msg_id   VARCHAR(191)    NOT NULL,
+            status            ENUM('sent','delivered','read','failed') NOT NULL DEFAULT 'sent',
+            error_code        INT UNSIGNED    NULL,
+            status_updated_at DATETIME        NULL,
+            created_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY external_msg_id (external_msg_id),
+            KEY tenant_id  (tenant_id),
+            KEY channel_id (channel_id),
+            KEY status     (status)
         ) {$charset};";
 
         dbDelta( $sql );

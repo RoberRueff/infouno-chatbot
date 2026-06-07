@@ -59,11 +59,18 @@ if ( ! function_exists( 'error_log' ) ) {
     // error_log es nativa PHP — no necesita stub, pero por si acaso se redirecciona a /dev/null en tests
 }
 
+// Clase base `wpdb` vacía: WP no se carga en tests, pero varias firmas de
+// producción tipan `\wpdb` (p. ej. Migrator::create*). Que WpdbStub extienda
+// esta base lo hace type-compatible con esos parámetros.
+if ( ! class_exists( 'wpdb' ) ) {
+    class wpdb {}
+}
+
 /**
  * Stub global $wpdb para tests que necesiten LeadService/LeadRepository.
  * Configurable por test via $GLOBALS['wpdb']->stubReturn.
  */
-class WpdbStub {
+class WpdbStub extends \wpdb {
     public string $prefix          = 'wp_';
     public int    $insert_id       = 0;
     public mixed  $stub_get_row    = null;
@@ -110,6 +117,10 @@ class WpdbStub {
         $this->last_query = $query;
         return $this->stub_query_result;
     }
+
+    public function get_charset_collate(): string {
+        return 'CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+    }
 }
 
 if ( ! function_exists( 'get_transient' ) ) {
@@ -133,6 +144,33 @@ if ( ! function_exists( 'get_option' ) ) {
 
 if ( ! isset( $GLOBALS['__infouno_transients'] ) ) {
     $GLOBALS['__infouno_transients'] = [];
+}
+
+if ( ! isset( $GLOBALS['__infouno_options'] ) ) {
+    $GLOBALS['__infouno_options'] = [];
+}
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', '/tmp/' );
+}
+
+if ( ! function_exists( 'update_option' ) ) {
+    function update_option( string $key, mixed $value ): bool {
+        $GLOBALS['__infouno_options'][ $key ] = $value;
+        return true;
+    }
+}
+
+if ( ! function_exists( 'dbDelta' ) ) {
+    /** Stub de dbDelta para tests: captura el SQL en vez de tocar la BD. */
+    function dbDelta( string $sql ): array {
+        $GLOBALS['__infouno_dbdelta_sql'][] = $sql;
+        return [];
+    }
+}
+
+if ( ! isset( $GLOBALS['__infouno_dbdelta_sql'] ) ) {
+    $GLOBALS['__infouno_dbdelta_sql'] = [];
 }
 
 if ( ! class_exists( 'WP_REST_Request' ) ) {

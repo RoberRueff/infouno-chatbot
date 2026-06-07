@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS\Tenant;
 
+use Infouno\SaaS\Persistence\MissingTenantScopeException;
+
 /**
  * Gestiona el ciclo de vida de los tenants y valida su estado antes de ejecutar operaciones.
  * Toda consulta a wp_infouno_tenants pasa por aquí — nunca consultar la tabla directamente desde otros módulos.
@@ -46,6 +48,23 @@ final class TenantManager {
             return null;
         }
         return $this->getByUserId( $userId );
+    }
+
+    /**
+     * Versión fail-closed de getForCurrentUser().
+     * Lanza MissingTenantScopeException si el usuario no tiene tenant activo,
+     * en vez de devolver null. Usar en cualquier contexto donde la ausencia de
+     * tenant es un bug de programación (controller ya autenticado, job de canal).
+     *
+     * @return array<string, mixed> Fila completa del tenant.
+     * @throws MissingTenantScopeException si no hay tenant activo para el usuario actual.
+     */
+    public function requireForCurrentUser(): array {
+        $tenant = $this->getForCurrentUser();
+        if ( ! $tenant || (int) ( $tenant['id'] ?? 0 ) <= 0 ) {
+            throw new MissingTenantScopeException( 'Sin tenant activo en contexto autenticado.' );
+        }
+        return $tenant;
     }
 
     public function getByUserId( int $userId ): ?array {

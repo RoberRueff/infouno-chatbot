@@ -228,4 +228,13 @@ if ( ! function_exists( 'current_time' ) ) {
     }
 }
 
+if ( ! function_exists( 'get_current_user_id' ) ) {
+    function get_current_user_id(): int {
+        return $GLOBALS['__infouno_current_user_id'] ?? 1;
+    }
+}
+if ( ! isset( $GLOBALS['__infouno_current_user_id'] ) ) {
+    $GLOBALS['__infouno_current_user_id'] = 1;
+}
+
 $GLOBALS['wpdb'] = new WpdbStub();

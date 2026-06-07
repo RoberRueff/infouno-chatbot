@@ -42,6 +42,10 @@ final class InboundDispatcher {
         private readonly ChannelConsentService $consent,
         private readonly ChatPipeline          $pipeline,
         callable                               $botLoader,
+        private readonly ?ChannelDeliveryRepository $deliveryRepo  = null,
+        private readonly ?WindowChecker             $windowChecker = null,
+        private readonly ?ChannelTemplateRepository $templateRepo  = null,
+        private readonly ?TemplateVariableResolver  $varResolver   = null,
     ) {
         $this->botLoader = $botLoader;
     }
@@ -57,6 +61,33 @@ final class InboundDispatcher {
         }
 
         $adapter = $this->registry->get( (string) $channel['channel_type'] );
+
+        // Enrutar eventos de estado (status receipts) al repositorio de entregas.
+        // Va ANTES de parseInbound() porque parseInbound() devuelve null para los
+        // payloads de status (saldríamos temprano y perderíamos el recibo).
+        if ( null !== $this->deliveryRepo && method_exists( $adapter, 'parseStatuses' ) ) {
+            $statusEvents = $adapter->parseStatuses( $payload );
+            if ( ! empty( $statusEvents ) ) {
+                $statusTenantId = (int) $channel['tenant_id'];
+                foreach ( $statusEvents as $event ) {
+                    $this->deliveryRepo->updateStatus(
+                        tenantId:      $statusTenantId,
+                        externalMsgId: $event->wamid,
+                        status:        $event->status,
+                        errorCode:     $event->errorCode,
+                    );
+                    if ( 'failed' === $event->status ) {
+                        error_log( sprintf(
+                            '[INFOUNO-CHANNEL] WhatsApp delivery failed: wamid=%s errorCode=%s',
+                            $event->wamid,
+                            $event->errorCode ?? 'n/a'
+                        ) );
+                    }
+                }
+                return; // payload de status procesado; no hay mensaje que responder
+            }
+        }
+
         $inbound = $adapter->parseInbound( $payload );
         if ( null === $inbound ) {
             return; // no era un mensaje de texto procesable
@@ -104,8 +135,64 @@ final class InboundDispatcher {
         }
 
         $reply = $sink->getBuffer();
-        if ( '' !== trim( $reply ) ) {
+        if ( '' === trim( $reply ) ) {
+            return;
+        }
+
+        // Decidir free-form vs template según la ventana de 24h.
+        // Sin windowChecker (tests/legacy) → se asume abierta (comportamiento original).
+        $windowOpen = null === $this->windowChecker
+            || $this->windowChecker->isOpen( $botId, $inbound->conversationKey() );
+
+        if ( $windowOpen ) {
             $adapter->send( $channel, $inbound->externalUser, $reply );
+        } else {
+            $template = null !== $this->templateRepo
+                ? ( $this->templateRepo->findApproved( $tenantId, (int) $channel['id'] )[0] ?? null )
+                : null;
+
+            if ( null === $template ) {
+                error_log( sprintf(
+                    '[INFOUNO-CHANNEL] Ventana cerrada y sin template aprobado: tenant=%d channel=%d user=%s — respuesta abandonada.',
+                    $tenantId,
+                    (int) $channel['id'],
+                    $inbound->externalUser
+                ) );
+                return;
+            }
+
+            $schema     = json_decode( (string) ( $template['variables_schema'] ?? '[]' ), true );
+            $schema     = is_array( $schema ) ? $schema : [];
+            $context    = [ 'customer_name' => $inbound->externalUser ]; // contexto mínimo
+            $components = null !== $this->varResolver
+                ? $this->varResolver->buildComponentsArray( $schema, $context )
+                : [];
+
+            if ( method_exists( $adapter, 'sendTemplate' ) ) {
+                $adapter->sendTemplate(
+                    $channel,
+                    $inbound->externalUser,
+                    (string) ( $template['name'] ?? '' ),
+                    (string) ( $template['language'] ?? 'es_AR' ),
+                    $components
+                );
+            } else {
+                error_log( '[INFOUNO-CHANNEL] Adapter sin sendTemplate(); usando free-form como fallback.' );
+                $adapter->send( $channel, $inbound->externalUser, $reply );
+            }
+        }
+
+        // Registrar la entrega saliente con el wamid capturado (si el adapter lo expone).
+        if ( null !== $this->deliveryRepo && method_exists( $adapter, 'lastWamid' ) ) {
+            $wamid = $adapter->lastWamid();
+            if ( null !== $wamid ) {
+                $this->deliveryRepo->record(
+                    tenantId:      $tenantId,
+                    channelId:     (int) $channel['id'],
+                    messageId:     null,
+                    externalMsgId: $wamid,
+                );
+            }
         }
     }
 

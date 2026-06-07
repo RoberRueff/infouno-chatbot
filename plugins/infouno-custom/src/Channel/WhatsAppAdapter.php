@@ -131,6 +131,74 @@ final class WhatsAppAdapter implements ChannelAdapterInterface, WebhookChallenge
     }
 
     /**
+     * Envía un mensaje usando un template aprobado por Meta (ventana cerrada).
+     * El nombre, idioma y componentes deben estar ya resueltos por el caller
+     * (TemplateVariableResolver::buildComponentsArray()).
+     * Captura el wamid igual que send(). Lanza WhatsAppGraphException en error.
+     *
+     * @param  array<string,mixed>            $channel      Fila de wp_infouno_channels.
+     * @param  string                         $externalUser Número de teléfono destino.
+     * @param  string                         $templateName Nombre del template en Meta.
+     * @param  string                         $language     Código de idioma, ej. 'es_AR'.
+     * @param  array<int,array<string,mixed>> $components   Componentes resueltos.
+     */
+    public function sendTemplate(
+        array  $channel,
+        string $externalUser,
+        string $templateName,
+        string $language,
+        array  $components,
+    ): void {
+        $creds = $this->vault->decryptArray( (string) ( $channel['credentials'] ?? '' ) );
+        $token = (string) ( $creds['access_token'] ?? '' );
+        $pnid  = (string) ( $creds['phone_number_id'] ?? '' );
+        if ( '' === $token || '' === $pnid ) {
+            throw new \RuntimeException( 'Canal WhatsApp sin access_token/phone_number_id.' );
+        }
+
+        $url = self::GRAPH_BASE . '/' . $pnid . '/messages';
+
+        $this->lastWamid = null;
+
+        $res  = $this->http->postJson(
+            $url,
+            [ 'Authorization' => 'Bearer ' . $token ],
+            [
+                'messaging_product' => 'whatsapp',
+                'to'                => $externalUser,
+                'type'              => 'template',
+                'template'          => [
+                    'name'       => $templateName,
+                    'language'   => [ 'code' => $language ],
+                    'components' => $components,
+                ],
+            ]
+        );
+
+        $code    = (int) ( $res['code'] ?? 0 );
+        $decoded = json_decode( (string) ( $res['body'] ?? '' ), true );
+        $decoded = is_array( $decoded ) ? $decoded : [];
+
+        if ( $code >= 200 && $code < 300 ) {
+            $wamid = $decoded['messages'][0]['id'] ?? null;
+            if ( is_string( $wamid ) && '' !== $wamid ) {
+                $this->lastWamid = $wamid;
+            }
+        } else {
+            $ex = WhatsAppGraphException::fromGraphError( $code, $decoded );
+            error_log( sprintf(
+                '[INFOUNO-CHANNEL] WhatsApp sendTemplate error: HTTP %d | graphCode=%d | retryable=%s | template=%s | %s',
+                $code,
+                $ex->graphCode(),
+                $ex->isRetryable() ? 'yes' : 'no',
+                $templateName,
+                $ex->getMessage()
+            ) );
+            throw $ex;
+        }
+    }
+
+    /**
      * Parsea los eventos `statuses` del payload de Meta y devuelve un array de
      * WhatsAppStatusEvent. Devuelve [] si el payload no contiene statuses o si
      * los estados no son reconocidos. parseInbound() sigue devolviendo null para

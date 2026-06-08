@@ -116,4 +116,45 @@ final class SubscriptionServiceTest extends TestCase {
         $this->expectExceptionMessage( 'already_subscribed' );
         $svc->createSubscription( [ 'id' => 3 ], 'owner@example.com', 14900.0 );
     }
+
+    public function test_createSubscription_throws_on_zero_price(): void {
+        $svc = new SubscriptionService(
+            $this->client( [] ),
+            $this->createMock( SubscriptionRepository::class ),
+            $this->createMock( TenantManager::class ),
+            'https://site/back'
+        );
+        $this->expectException( \RuntimeException::class );
+        $svc->createSubscription( [ 'id' => 3 ], 'owner@example.com', 0.0 );
+    }
+
+    public function test_reconcile_payment_approved_reactivates_premium(): void {
+        $repo = $this->createMock( SubscriptionRepository::class );
+        $repo->method( 'paymentEventExists' )->willReturn( false );
+        $repo->method( 'findByPreapprovalId' )->willReturn( [ 'id' => 1, 'tenant_id' => 3, 'last_event_ts' => 0 ] );
+        $repo->expects( $this->once() )->method( 'recordPaymentEvent' );
+        $repo->expects( $this->once() )->method( 'updateNextPayment' );
+
+        $tm = $this->createMock( TenantManager::class );
+        $tm->expects( $this->once() )->method( 'applyPlanChange' )->with( 3, 'premium', 'active' );
+
+        $client = $this->client( [ 'payment' => [ 'id' => 'pay-2', 'status' => 'approved', 'transaction_amount' => 14900, 'preapproval_id' => 'pa-1' ] ] );
+        $svc = new SubscriptionService( $client, $repo, $tm, 'https://site/back' );
+
+        $svc->reconcileFromNotification( 'payment', 'pay-2', 1_700_000_100 );
+    }
+
+    public function test_reconcile_unknown_preapproval_is_noop(): void {
+        $repo = $this->createMock( SubscriptionRepository::class );
+        $repo->method( 'findByPreapprovalId' )->willReturn( null );
+        $repo->expects( $this->never() )->method( 'markAuthorized' );
+
+        $tm = $this->createMock( TenantManager::class );
+        $tm->expects( $this->never() )->method( 'applyPlanChange' );
+
+        $client = $this->client( [ 'preapproval' => [ 'id' => 'pa-x', 'status' => 'authorized' ] ] );
+        $svc = new SubscriptionService( $client, $repo, $tm, 'https://site/back' );
+
+        $svc->reconcileFromNotification( 'subscription_preapproval', 'pa-x', 1_700_000_100 );
+    }
 }

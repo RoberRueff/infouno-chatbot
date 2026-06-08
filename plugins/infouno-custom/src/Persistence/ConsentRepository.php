@@ -57,6 +57,9 @@ final class ConsentRepository extends TenantScopedRepository {
      * Igual que consentExistsByBot pero filtra por tenant_id (path de canales sociales,
      * que históricamente cuenta filas por tenant). Scope key: tenant_id.
      *
+     * Usa COUNT(*) en vez de SELECT id LIMIT 1 para preservar exactamente la query
+     * original de ChannelConsentService (el resultado booleano es idéntico).
+     *
      * @throws MissingTenantScopeException si $tenantId <= 0.
      */
     public function consentExistsByTenant( int $tenantId, string $sessionHash, string $scope ): bool {

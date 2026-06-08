@@ -83,6 +83,11 @@ final class ConsentRepositoryTest extends TestCase {
         ( new ConsentRepository() )->recordConsentRow( 3, 7, 'sess', 'chat', '1.0', '', '', 'telegram' );
         $this->assertSame( 'telegram', $captured['channel'] );
         $this->assertArrayHasKey( 'accepted_at', $captured );
+        // accepted_at es evidencia legal: debe ser un datetime UTC válido, no solo existir.
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/',
+            $captured['accepted_at']
+        );
         $this->assertSame( '', $captured['ip_hash'] );
     }
 

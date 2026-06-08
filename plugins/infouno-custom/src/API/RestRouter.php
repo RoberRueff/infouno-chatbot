@@ -85,16 +85,7 @@ final class RestRouter {
 
         $billingConfig    = new \Infouno\SaaS\Billing\BillingConfig();
         $subscriptionRepo = new \Infouno\SaaS\Persistence\SubscriptionRepository();
-        $mpClient         = new \Infouno\SaaS\Billing\MercadoPagoClient(
-            new \Infouno\SaaS\Billing\WpHttpClient(),
-            $billingConfig->accessToken()
-        );
-        $billingService   = new \Infouno\SaaS\Billing\SubscriptionService(
-            $mpClient,
-            $subscriptionRepo,
-            $this->tenantManager,
-            home_url( '/billing/return' )
-        );
+        $billingService   = \Infouno\SaaS\Billing\BillingServiceFactory::create( $this->tenantManager );
         $billingController = new BillingController(
             $this->tenantManager,
             $billingService,

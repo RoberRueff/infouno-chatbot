@@ -146,4 +146,52 @@ final class OpportunityRepositoryTest extends TestCase {
         $this->assertStringContainsString( 'tenant_id = 3', $q );
         $this->assertStringContainsString( "stage = 'quoted'", $q );
     }
+
+    // ── getLeadSnapshotForTenant ──────────────────────────────────────────
+
+    public function test_getLeadSnapshot_returns_score_and_bot_scoped_by_tenant(): void {
+        $GLOBALS['wpdb']->stub_get_row = [ 'score' => '85', 'bot_id' => '4' ];
+        $snap = ( new OpportunityRepository() )->getLeadSnapshotForTenant( 7, 3 );
+        $this->assertSame( 85, $snap['score'] );
+        $this->assertSame( 4, $snap['bot_id'] );
+        $q = $GLOBALS['wpdb']->last_query;
+        $this->assertStringContainsString( 'infouno_leads', $q );
+        $this->assertStringContainsString( 'id = 7', $q );
+        $this->assertStringContainsString( 'tenant_id = 3', $q );
+    }
+
+    public function test_getLeadSnapshot_returns_null_when_absent(): void {
+        $GLOBALS['wpdb']->stub_get_row = null;
+        $this->assertNull( ( new OpportunityRepository() )->getLeadSnapshotForTenant( 7, 3 ) );
+    }
+
+    public function test_getLeadSnapshot_fails_closed_on_zero_tenant(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new OpportunityRepository() )->getLeadSnapshotForTenant( 7, 0 );
+    }
+
+    // ── listWithLeadDataForTenant ─────────────────────────────────────────
+
+    public function test_listWithLeadData_joins_leads_and_bots_scoped_by_tenant(): void {
+        $GLOBALS['wpdb']->stub_get_results = [ [ 'id' => 1 ] ];
+        $rows = ( new OpportunityRepository() )->listWithLeadDataForTenant( 3, null );
+        $this->assertSame( [ [ 'id' => 1 ] ], $rows );
+        $q = $GLOBALS['wpdb']->last_query;
+        $this->assertStringContainsString( 'infouno_opportunities', $q );
+        $this->assertStringContainsString( 'infouno_leads', $q );
+        $this->assertStringContainsString( 'infouno_bots', $q );
+        $this->assertStringContainsString( 'o.tenant_id = 3', $q );
+        $this->assertStringContainsString( 'lead_name', $q );
+    }
+
+    public function test_listWithLeadData_applies_stage_filter(): void {
+        $GLOBALS['wpdb']->stub_get_results = [];
+        ( new OpportunityRepository() )->listWithLeadDataForTenant( 3, 'quoted' );
+        $this->assertStringContainsString( "o.stage = 'quoted'", $GLOBALS['wpdb']->last_query );
+    }
+
+    public function test_listWithLeadData_fails_closed_on_zero_tenant(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new OpportunityRepository() )->listWithLeadDataForTenant( 0, null );
+    }
 }

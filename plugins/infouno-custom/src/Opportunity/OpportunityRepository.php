@@ -306,4 +306,75 @@ final class OpportunityRepository extends TenantScopedRepository {
 
         return (int) $this->db->insert_id;
     }
+
+    /**
+     * Lee el lead de origen (score + bot_id) para sembrar una oportunidad.
+     * Consolida en una query las 3 lecturas que el controller hacía por separado
+     * (existencia, score, bot_id). Devuelve null si el lead no existe en el tenant.
+     * Scope key: tenant_id.
+     *
+     * @return array{score:int, bot_id:int}|null
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function getLeadSnapshotForTenant( int $leadId, int $tenantId ): ?array {
+        $this->guardScope( $tenantId );
+
+        $leadsTable = $this->db->prefix . 'infouno_leads';
+
+        $row = $this->db->get_row(
+            $this->db->prepare(
+                "SELECT score, bot_id FROM `{$leadsTable}` WHERE id = %d AND tenant_id = %d LIMIT 1",
+                $leadId,
+                $tenantId
+            ),
+            ARRAY_A
+        );
+
+        if ( ! $row ) {
+            return null;
+        }
+
+        return [ 'score' => (int) $row['score'], 'bot_id' => (int) $row['bot_id'] ];
+    }
+
+    /**
+     * Lista oportunidades del tenant con datos del lead y bot en una sola query (JOIN).
+     * Absorbe OpportunityDashboard::getOpportunitiesWithLeadData. Scope key: tenant_id.
+     *
+     * @return array<int, array<string, mixed>>
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function listWithLeadDataForTenant( int $tenantId, ?string $stage = null, int $limit = 100 ): array {
+        $this->guardScope( $tenantId );
+
+        $oppTable   = $this->table();
+        $leadsTable = $this->db->prefix . 'infouno_leads';
+        $botsTable  = $this->db->prefix . 'infouno_bots';
+
+        $where = $this->db->prepare( 'WHERE o.tenant_id = %d', $tenantId );
+        if ( $stage !== null && in_array( $stage, self::STAGES, true ) ) {
+            $where .= $this->db->prepare( ' AND o.stage = %s', $stage );
+        }
+
+        // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+        return $this->db->get_results(
+            $this->db->prepare(
+                "SELECT o.id, o.lead_id, o.bot_id, o.stage, o.estimated_value, o.currency,
+                        o.lost_reason, o.stage_changed_at, o.won_at, o.lost_at, o.created_at,
+                        l.name  AS lead_name,
+                        l.email AS lead_email,
+                        l.phone AS lead_phone,
+                        b.bot_name
+                 FROM `{$oppTable}` o
+                 LEFT JOIN `{$leadsTable}` l ON l.id = o.lead_id AND l.tenant_id = o.tenant_id
+                 LEFT JOIN `{$botsTable}`  b ON b.id = o.bot_id  AND b.tenant_id = o.tenant_id
+                 {$where}
+                 ORDER BY FIELD(o.stage,'new','contacted','interested','quoted','lost','won'),
+                          o.created_at DESC
+                 LIMIT %d",
+                $limit
+            ),
+            ARRAY_A
+        ) ?: [];
+    }
 }

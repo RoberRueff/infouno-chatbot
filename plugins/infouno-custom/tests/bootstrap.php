@@ -129,6 +129,14 @@ class WpdbStub extends \wpdb {
         return 1;
     }
 
+    /** @var array<string,mixed> Cláusula WHERE del último delete() — clave para verificar aislamiento por tenant. */
+    public array $last_delete_where = [];
+
+    public function delete( string $table, array $where, array $whereFormats = [] ): int|false {
+        $this->last_delete_where = $where;
+        return 1;
+    }
+
     public mixed  $stub_query_result = 0;
     public string $last_query        = '';
     /** Stores the last SQL sent via query() (write path). */

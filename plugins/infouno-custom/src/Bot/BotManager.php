@@ -254,6 +254,69 @@ final class BotManager extends TenantScopedRepository {
         return in_array( $normalizedOrigin, $allowed, true );
     }
 
+    /**
+     * Guarda el resultado del wizard (system_prompt + wizard_data) de un bot.
+     * Absorbe el UPDATE duplicado en BotController::wizard y BotWizard. Scope key: tenant_id.
+     *
+     * @param array<string,mixed> $wizardData
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function saveWizardResult( int $botId, int $tenantId, string $systemPrompt, array $wizardData ): bool {
+        $this->guardScope( $tenantId );
+
+        $updated = $this->db->update(
+            $this->table(),
+            [
+                'system_prompt' => $systemPrompt,
+                'wizard_data'   => wp_json_encode( $wizardData ),
+            ],
+            [ 'id' => $botId, 'tenant_id' => $tenantId ],
+            [ '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        return $updated !== false;
+    }
+
+    /**
+     * Cuenta leads agrupados por bot para un conjunto de bots del tenant (una sola query).
+     * Absorbe el GROUP BY de BotDashboard. Devuelve [bot_id => total]. Scope key: tenant_id.
+     *
+     * @param array<int> $botIds
+     * @return array<int,int>
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function leadCountsForBots( array $botIds, int $tenantId ): array {
+        $this->guardScope( $tenantId );
+
+        $botIds = array_values( array_map( 'intval', $botIds ) );
+        if ( ! $botIds ) {
+            return [];
+        }
+
+        $leadsTable   = $this->db->prefix . 'infouno_leads';
+        $placeholders = implode( ',', array_fill( 0, count( $botIds ), '%d' ) );
+
+        // phpcs:ignore WordPress.DB.PreparedSQL, WordPress.DB.PreparedSQLPlaceholders
+        $rows = $this->db->get_results(
+            $this->db->prepare(
+                "SELECT bot_id, COUNT(*) AS total
+                 FROM `{$leadsTable}`
+                 WHERE bot_id IN ({$placeholders}) AND tenant_id = %d
+                 GROUP BY bot_id",
+                ...array_merge( $botIds, [ $tenantId ] )
+            ),
+            ARRAY_A
+        );
+
+        $counts = [];
+        foreach ( $rows ?: [] as $row ) {
+            $counts[ (int) $row['bot_id'] ] = (int) $row['total'];
+        }
+
+        return $counts;
+    }
+
     /** Decodifica la columna JSON de settings con fallback al esquema por defecto. */
     private function decodeSettings( array $row ): array {
         $decoded = json_decode( $row['settings'] ?? '{}', true );

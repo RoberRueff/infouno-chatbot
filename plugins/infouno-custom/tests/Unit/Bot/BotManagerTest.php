@@ -122,4 +122,42 @@ final class BotManagerTest extends TestCase {
         $this->assertSame( 0.2, $settings['temperature'] );   // override aplicado
         $this->assertSame( 2048, $settings['max_tokens'] );   // valor previo preservado
     }
+
+    // ── saveWizardResult ──────────────────────────────────────────────────
+
+    public function test_saveWizardResult_updates_prompt_and_wizard_data_scoped_by_tenant(): void {
+        ( new BotManager() )->saveWizardResult( 9, 3, 'PROMPT', [ 'industry' => 'retail' ] );
+        $this->assertSame( 'PROMPT', $GLOBALS['wpdb']->last_update_data['system_prompt'] );
+        $this->assertArrayHasKey( 'wizard_data', $GLOBALS['wpdb']->last_update_data );
+        $this->assertSame( [ 'id' => 9, 'tenant_id' => 3 ], $GLOBALS['wpdb']->last_update_where );
+    }
+
+    public function test_saveWizardResult_fails_closed_on_zero_tenant(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new BotManager() )->saveWizardResult( 9, 0, 'PROMPT', [] );
+    }
+
+    // ── leadCountsForBots ─────────────────────────────────────────────────
+
+    public function test_leadCountsForBots_groups_by_bot_scoped_by_tenant(): void {
+        $GLOBALS['wpdb']->stub_get_results = [
+            [ 'bot_id' => '5', 'total' => '12' ],
+            [ 'bot_id' => '7', 'total' => '3' ],
+        ];
+        $counts = ( new BotManager() )->leadCountsForBots( [ 5, 7 ], 3 );
+        $this->assertSame( [ 5 => 12, 7 => 3 ], $counts );
+        $q = $GLOBALS['wpdb']->last_query;
+        $this->assertStringContainsString( 'infouno_leads', $q );
+        $this->assertStringContainsString( 'tenant_id = 3', $q );
+        $this->assertStringContainsString( 'GROUP BY bot_id', $q );
+    }
+
+    public function test_leadCountsForBots_returns_empty_for_no_bots(): void {
+        $this->assertSame( [], ( new BotManager() )->leadCountsForBots( [], 3 ) );
+    }
+
+    public function test_leadCountsForBots_fails_closed_on_zero_tenant(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new BotManager() )->leadCountsForBots( [ 5 ], 0 );
+    }
 }

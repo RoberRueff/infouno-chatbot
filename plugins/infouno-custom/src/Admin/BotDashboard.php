@@ -133,26 +133,9 @@ final class BotDashboard {
             return;
         }
 
-        // Contadores de leads por bot (una sola query)
-        global $wpdb;
-        $leadCounts = [];
+        // Contadores de leads por bot (una sola query, vía manager — SQL-free).
         $botIds     = array_map( static fn( $b ) => (int) $b['id'], $bots );
-        if ( $botIds ) {
-            $placeholders = implode( ',', array_fill( 0, count( $botIds ), '%d' ) );
-            $rows         = $wpdb->get_results(
-                $wpdb->prepare( // phpcs:ignore
-                    "SELECT bot_id, COUNT(*) AS total
-                     FROM `{$wpdb->prefix}infouno_leads`
-                     WHERE bot_id IN ({$placeholders}) AND tenant_id = %d
-                     GROUP BY bot_id",
-                    ...array_merge( $botIds, [ $tenantId ] )
-                ),
-                ARRAY_A
-            );
-            foreach ( $rows ?: [] as $row ) {
-                $leadCounts[ (int) $row['bot_id'] ] = (int) $row['total'];
-            }
-        }
+        $leadCounts = $this->botManager->leadCountsForBots( $botIds, $tenantId );
 
         echo '<table class="wp-list-table widefat fixed striped" style="margin-top:16px">';
         echo '<thead><tr>';

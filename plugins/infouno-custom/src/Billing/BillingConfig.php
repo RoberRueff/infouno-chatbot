@@ -40,7 +40,7 @@ final class BillingConfig {
     }
 
     public function premiumPriceArs(): float {
-        return (float) ( $this->options()['premium_price_ars'] ?? 0 );
+        return (float) ( $this->options()['premium_price_ars'] ?? 0.0 );
     }
 
     public function isConfigured(): bool {

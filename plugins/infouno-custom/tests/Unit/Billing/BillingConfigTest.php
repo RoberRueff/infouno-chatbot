@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace Infouno\SaaS\Tests\Unit\Billing;
 
 use Infouno\SaaS\Billing\BillingConfig;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class BillingConfigTest extends TestCase {
@@ -35,5 +37,18 @@ final class BillingConfigTest extends TestCase {
         $cfg = new BillingConfig();
         $this->assertSame( 'whsec', $cfg->webhookSecret() );
         $this->assertSame( 'pk', $cfg->publicKey() );
+    }
+
+    /**
+     * La feature de seguridad clave: la constante de entorno gana sobre la opción.
+     * Se corre en proceso aislado porque define() es global y no se puede deshacer.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState( false )]
+    public function test_env_constant_wins_over_option(): void {
+        define( 'INFOUNO_MP_ACCESS_TOKEN', 'env-token' );
+        update_option( 'infouno_billing', [ 'access_token' => 'opt-token' ] );
+
+        $this->assertSame( 'env-token', ( new BillingConfig() )->accessToken() );
     }
 }

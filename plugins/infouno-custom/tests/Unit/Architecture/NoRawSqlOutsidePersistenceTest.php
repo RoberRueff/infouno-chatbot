@@ -39,15 +39,15 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
      * Increment 5 (Bots): se eliminan BotController, BotDashboard, BotWizard → allowlist vacía.
      */
     private const ALLOWLIST = [
-        // 'API/ConsentController.php', ← migrado en Increment 3 (Bloque D)
-        // 'API/LeadController.php',    ← migrado en Increment 2 (Bloque D)
-        'API/OpportunityController.php',
+        // 'API/ConsentController.php',     ← migrado en Increment 3 (Bloque D)
+        // 'API/LeadController.php',        ← migrado en Increment 2 (Bloque D)
+        // 'API/OpportunityController.php', ← migrado en Increment 4 (Bloque D)
         'API/BotController.php',
-        // 'Admin/LeadDashboard.php',   ← migrado en Increment 2 (Bloque D)
-        'Admin/OpportunityDashboard.php',
+        // 'Admin/LeadDashboard.php',       ← migrado en Increment 2 (Bloque D)
+        // 'Admin/OpportunityDashboard.php',← migrado en Increment 4 (Bloque D)
         'Admin/BotDashboard.php',
         'Admin/BotWizard.php',
-        // 'Lead/LeadService.php',      ← migrado en Increment 2 (Bloque D)
+        // 'Lead/LeadService.php',          ← migrado en Increment 2 (Bloque D)
         // 'Channel/ChannelConsentService.php', ← migrado en Increment 3 (Bloque D)
     ];
 
@@ -157,8 +157,8 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
      * Self-test: un archivo en la allowlist con $wpdb-> NO se marca como violación.
      */
     public function test_scanner_allows_allowlisted_files(): void {
-        $fakeContent = '<?php $wpdb->get_results("SELECT * FROM wp_opportunities");';
-        $fakeRel     = 'API/OpportunityController.php'; // sí está en ALLOWLIST (legacy aún no migrado)
+        $fakeContent = '<?php $wpdb->get_results("SELECT * FROM wp_bots");';
+        $fakeRel     = 'API/BotController.php'; // sí está en ALLOWLIST (legacy aún no migrado)
 
         $hasToken    = str_contains( $fakeContent, self::SQL_TOKEN );
         $allowListed = in_array( $fakeRel, self::ALLOWLIST, true );

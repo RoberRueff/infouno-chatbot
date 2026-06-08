@@ -248,6 +248,7 @@ if ( ! class_exists( 'WP_Error' ) ) {
             public string $message = '',
             public mixed  $data    = null,
         ) {}
+        public function get_error_data( string $code = '' ): mixed { return $this->data; }
     }
 }
 

@@ -122,4 +122,115 @@ final class ConsentRepository extends TenantScopedRepository {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery
         $this->db->insert( $this->table(), $data, $formats );
     }
+
+    // ── tabla lead_consents ───────────────────────────────────────────────
+
+    /**
+     * ¿Existe ya un registro de consentimiento PII para este bot + sesión?
+     * Scope key: bot_id.
+     *
+     * @throws MissingTenantScopeException si $botId <= 0.
+     */
+    public function leadConsentExists( int $botId, string $sessionHash ): bool {
+        $this->guardScope( $botId );
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL
+        $id = $this->db->get_var(
+            $this->db->prepare(
+                "SELECT id FROM `{$this->tableLeadConsents}` WHERE bot_id = %d AND session_hash = %s LIMIT 1",
+                $botId,
+                $sessionHash
+            )
+        );
+
+        return (bool) $id;
+    }
+
+    /**
+     * Inserta el consentimiento granular PII (flags name/phone/email).
+     * Scope key: bot_id. Si $withTimestamp, setea accepted_at (path canal);
+     * si no, lo deja a default de BD (path web).
+     *
+     * @throws MissingTenantScopeException si $botId <= 0.
+     */
+    public function recordLeadConsentRow(
+        int    $tenantId,
+        int    $botId,
+        string $sessionHash,
+        bool   $canName,
+        bool   $canPhone,
+        bool   $canEmail,
+        string $version,
+        string $ipHash,
+        string $uaHash,
+        bool   $withTimestamp = false,
+    ): void {
+        $this->guardScope( $botId );
+
+        $data = [
+            'tenant_id'         => $tenantId,
+            'bot_id'            => $botId,
+            'session_hash'      => $sessionHash,
+            'can_capture_name'  => (int) $canName,
+            'can_capture_phone' => (int) $canPhone,
+            'can_capture_email' => (int) $canEmail,
+            'consent_version'   => $version,
+            'ip_hash'           => $ipHash,
+            'user_agent_hash'   => $uaHash,
+        ];
+        $formats = [ '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s', '%s' ];
+
+        if ( $withTimestamp ) {
+            $data['accepted_at'] = gmdate( 'Y-m-d H:i:s' );
+            $formats[]           = '%s';
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $this->db->insert( $this->tableLeadConsents, $data, $formats );
+    }
+
+    // ── tabla leads (solo revoke) ─────────────────────────────────────────
+
+    /**
+     * Anonimiza la PII de un lead (name/phone/email → NULL) — Art. 16 Ley 25.326.
+     * Scope key: tenant_id.
+     *
+     * @throws MissingTenantScopeException si $tenantId <= 0.
+     */
+    public function anonymizeLeadPii( int $tenantId, string $sessionHash ): void {
+        $this->guardScope( $tenantId );
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL
+        $this->db->query(
+            $this->db->prepare(
+                "UPDATE `{$this->tableLeads}`
+                 SET name = NULL, phone = NULL, email = NULL
+                 WHERE session_hash = %s AND tenant_id = %d",
+                $sessionHash,
+                $tenantId
+            )
+        );
+    }
+
+    /**
+     * Desactiva los flags de captura futura de una sesión+bot — tras revocar,
+     * el usuario no puede ser recapturado sin un nuevo consentimiento explícito.
+     * Scope key: bot_id.
+     *
+     * @throws MissingTenantScopeException si $botId <= 0.
+     */
+    public function revokeCaptureFlags( int $botId, string $sessionHash ): void {
+        $this->guardScope( $botId );
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL
+        $this->db->query(
+            $this->db->prepare(
+                "UPDATE `{$this->tableLeadConsents}`
+                 SET can_capture_name = 0, can_capture_phone = 0, can_capture_email = 0
+                 WHERE session_hash = %s AND bot_id = %d",
+                $sessionHash,
+                $botId
+            )
+        );
+    }
 }

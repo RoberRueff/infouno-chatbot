@@ -95,4 +95,82 @@ final class ConsentRepositoryTest extends TestCase {
         $this->expectException( MissingTenantScopeException::class );
         ( new ConsentRepository() )->recordConsentRow( 3, 0, 'sess', 'chat', '1.0', '', '' );
     }
+
+    public function test_leadConsentExists_filters_by_bot_and_session(): void {
+        $GLOBALS['wpdb']->stub_get_var = '5';
+        $repo = new ConsentRepository();
+        $this->assertTrue( $repo->leadConsentExists( 7, 'sess' ) );
+        $q = $GLOBALS['wpdb']->last_query;
+        $this->assertStringContainsString( 'lead_consents', $q );
+        $this->assertStringContainsString( 'bot_id = 7', $q );
+        $this->assertStringContainsString( "session_hash = 'sess'", $q );
+    }
+
+    public function test_leadConsentExists_fails_closed_on_zero_bot(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new ConsentRepository() )->leadConsentExists( 0, 'sess' );
+    }
+
+    public function test_recordLeadConsentRow_maps_capture_flags(): void {
+        $captured = null;
+        $GLOBALS['wpdb']->onInsert = function ( string $table, array $data ) use ( &$captured ) {
+            $captured = [ 'table' => $table, 'data' => $data ];
+        };
+        ( new ConsentRepository() )->recordLeadConsentRow( 3, 7, 'sess', true, false, true, '1.0', 'ip', 'ua' );
+        $this->assertSame( 'wp_infouno_lead_consents', $captured['table'] );
+        $this->assertSame( 1, $captured['data']['can_capture_name'] );
+        $this->assertSame( 0, $captured['data']['can_capture_phone'] );
+        $this->assertSame( 1, $captured['data']['can_capture_email'] );
+        $this->assertSame( 3, $captured['data']['tenant_id'] );
+        $this->assertSame( 7, $captured['data']['bot_id'] );
+        $this->assertArrayNotHasKey( 'accepted_at', $captured['data'] );
+    }
+
+    public function test_recordLeadConsentRow_with_timestamp_sets_accepted_at(): void {
+        $captured = null;
+        $GLOBALS['wpdb']->onInsert = function ( string $table, array $data ) use ( &$captured ) {
+            $captured = $data;
+        };
+        ( new ConsentRepository() )->recordLeadConsentRow( 3, 7, 'sess', true, true, true, '1.0', '', '', true );
+        $this->assertArrayHasKey( 'accepted_at', $captured );
+    }
+
+    public function test_recordLeadConsentRow_fails_closed_on_zero_bot(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new ConsentRepository() )->recordLeadConsentRow( 3, 0, 'sess', true, true, true, '1.0', '', '' );
+    }
+
+    public function test_anonymizeLeadPii_nulls_pii_scoped_by_tenant(): void {
+        ( new ConsentRepository() )->anonymizeLeadPii( 3, 'sess' );
+        $q = $GLOBALS['wpdb']->last_write_query;
+        $this->assertStringContainsString( 'UPDATE', $q );
+        $this->assertStringContainsString( 'infouno_leads', $q );
+        $this->assertStringContainsString( 'name = NULL', $q );
+        $this->assertStringContainsString( 'phone = NULL', $q );
+        $this->assertStringContainsString( 'email = NULL', $q );
+        $this->assertStringContainsString( 'tenant_id = 3', $q );
+        $this->assertStringContainsString( "session_hash = 'sess'", $q );
+    }
+
+    public function test_anonymizeLeadPii_fails_closed_on_zero_tenant(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new ConsentRepository() )->anonymizeLeadPii( 0, 'sess' );
+    }
+
+    public function test_revokeCaptureFlags_zeroes_flags_scoped_by_bot(): void {
+        ( new ConsentRepository() )->revokeCaptureFlags( 7, 'sess' );
+        $q = $GLOBALS['wpdb']->last_write_query;
+        $this->assertStringContainsString( 'UPDATE', $q );
+        $this->assertStringContainsString( 'lead_consents', $q );
+        $this->assertStringContainsString( 'can_capture_name = 0', $q );
+        $this->assertStringContainsString( 'can_capture_phone = 0', $q );
+        $this->assertStringContainsString( 'can_capture_email = 0', $q );
+        $this->assertStringContainsString( 'bot_id = 7', $q );
+        $this->assertStringContainsString( "session_hash = 'sess'", $q );
+    }
+
+    public function test_revokeCaptureFlags_fails_closed_on_zero_bot(): void {
+        $this->expectException( MissingTenantScopeException::class );
+        ( new ConsentRepository() )->revokeCaptureFlags( 0, 'sess' );
+    }
 }

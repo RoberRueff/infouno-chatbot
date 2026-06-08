@@ -38,6 +38,7 @@
 | Canales sociales (WhatsApp Cloud API + Telegram) | v9 | ✅ |
 | Transporte web SSE→Full (Bloque A) + spec §A.3 | v9 (sin cambio de schema) | ✅ |
 | WhatsApp hardening (Bloque B): recibos de estado, clasificación de errores Graph, ventana 24h, templates, channel_deliveries | v10 | ✅ |
+| Aislamiento de tenant fail-closed (Bloque D, incrementos 1+2): `Persistence\TenantScopedRepository` + guard estático + dominio Leads migrado a repo | v10 (sin cambio de schema) | ✅ |
 
 ---
 
@@ -45,7 +46,7 @@
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/tenant-isolation-fail-closed` | feature | 🔴 Alta | **Bloque D**: `TenantScopedRepository` + guard estático en CI (sin cambio de schema) |
+| `feature/tenant-isolation-leads-consents` | feature | 🔴 Alta | **Bloque D incrementos 3-5**: migrar Consents, Opportunities y Bots a repos (allowlist del guard → vacía) |
 | `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |

@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS\Opportunity;
 
+use Infouno\SaaS\Persistence\TenantScopedRepository;
+
 /**
  * Acceso a wp_infouno_opportunities.
  *
- * Toda query incluye tenant_id — guardrail de aislamiento multitenant.
- * No se declaran FKs en la tabla; integridad garantizada por la capa de aplicación.
+ * Extiende TenantScopedRepository: usa $this->db (wpdb inyectado por el ctor base)
+ * y exige un scope positivo via guardScope($tenantId) como primera línea de cada
+ * método — fail-closed. Toda query incluye tenant_id (guardrail de aislamiento
+ * multitenant). No se declaran FKs en la tabla; integridad garantizada por la
+ * capa de aplicación.
+ *
+ * Scope key: tenant_id.
  */
-final class OpportunityRepository {
+final class OpportunityRepository extends TenantScopedRepository {
 
     /** Stages válidos en orden de pipeline. */
     public const STAGES = [ 'new', 'contacted', 'interested', 'quoted', 'won', 'lost' ];
@@ -18,15 +25,19 @@ final class OpportunityRepository {
     /** Estados terminales — no pueden avanzar a otro stage. */
     public const TERMINAL_STAGES = [ 'won', 'lost' ];
 
+    protected function table(): string {
+        return $this->db->prefix . 'infouno_opportunities';
+    }
+
     /**
      * Crea una nueva oportunidad y retorna su ID.
      */
     public function create( array $data ): int {
-        global $wpdb;
+        $this->guardScope( (int) $data['tenant_id'] );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
 
-        $wpdb->insert(
+        $this->db->insert(
             $table,
             [
                 'tenant_id'       => (int) $data['tenant_id'],
@@ -42,7 +53,7 @@ final class OpportunityRepository {
             [ '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ]
         );
 
-        return (int) $wpdb->insert_id;
+        return (int) $this->db->insert_id;
     }
 
     /**
@@ -50,12 +61,12 @@ final class OpportunityRepository {
      * "Activa" = stage NOT IN ('won', 'lost').
      */
     public function getActiveByLead( int $leadId, int $tenantId ): ?array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
 
-        $row = $wpdb->get_row(
-            $wpdb->prepare(
+        $row = $this->db->get_row(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}`
                  WHERE lead_id = %d AND tenant_id = %d
                    AND stage NOT IN ('won', 'lost')
@@ -74,12 +85,12 @@ final class OpportunityRepository {
      * Retorna una oportunidad por ID verificando ownership del tenant.
      */
     public function getById( int $id, int $tenantId ): ?array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
 
-        $row = $wpdb->get_row(
-            $wpdb->prepare(
+        $row = $this->db->get_row(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}` WHERE id = %d AND tenant_id = %d LIMIT 1",
                 $id,
                 $tenantId
@@ -100,19 +111,19 @@ final class OpportunityRepository {
         int     $limit  = 50,
         int     $offset = 0
     ): array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
 
-        $where = $wpdb->prepare( 'WHERE tenant_id = %d', $tenantId );
+        $where = $this->db->prepare( 'WHERE tenant_id = %d', $tenantId );
 
         if ( $stage !== null && in_array( $stage, self::STAGES, true ) ) {
-            $where  .= $wpdb->prepare( ' AND stage = %s', $stage );
+            $where  .= $this->db->prepare( ' AND stage = %s', $stage );
         }
 
         // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-        return $wpdb->get_results(
-            $wpdb->prepare(
+        return $this->db->get_results(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}` {$where}
                  ORDER BY FIELD(stage,'new','contacted','interested','quoted','lost','won'), created_at DESC
                  LIMIT %d OFFSET %d",
@@ -127,13 +138,13 @@ final class OpportunityRepository {
      * Cuenta las oportunidades del tenant por stage (para paginación y métricas).
      */
     public function countForTenant( int $tenantId, ?string $stage = null ): int {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
 
         if ( $stage !== null && in_array( $stage, self::STAGES, true ) ) {
-            return (int) $wpdb->get_var(
-                $wpdb->prepare(
+            return (int) $this->db->get_var(
+                $this->db->prepare(
                     "SELECT COUNT(*) FROM `{$table}` WHERE tenant_id = %d AND stage = %s",
                     $tenantId,
                     $stage
@@ -141,8 +152,8 @@ final class OpportunityRepository {
             );
         }
 
-        return (int) $wpdb->get_var(
-            $wpdb->prepare(
+        return (int) $this->db->get_var(
+            $this->db->prepare(
                 "SELECT COUNT(*) FROM `{$table}` WHERE tenant_id = %d",
                 $tenantId
             )
@@ -156,9 +167,9 @@ final class OpportunityRepository {
      * @return array{total: int, by_stage: array<string,int>, pipeline_value: float, won_count: int, lost_count: int}
      */
     public function getPipelineMetrics( int $tenantId ): array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table   = $wpdb->prefix . 'infouno_opportunities';
+        $table   = $this->table();
         $byStage = [];
         $total   = 0;
 
@@ -168,8 +179,8 @@ final class OpportunityRepository {
             $total            += $count;
         }
 
-        $pipelineValue = (float) $wpdb->get_var(
-            $wpdb->prepare(
+        $pipelineValue = (float) $this->db->get_var(
+            $this->db->prepare(
                 "SELECT COALESCE(SUM(estimated_value), 0)
                  FROM `{$table}`
                  WHERE tenant_id = %d
@@ -200,9 +211,9 @@ final class OpportunityRepository {
         string $newStage,
         string $lostReason = ''
     ): bool {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_opportunities';
+        $table = $this->table();
         $now   = gmdate( 'Y-m-d H:i:s' );
 
         $current = $this->getById( $id, $tenantId );
@@ -235,7 +246,7 @@ final class OpportunityRepository {
             }
         }
 
-        $updated = $wpdb->update(
+        $updated = $this->db->update(
             $table,
             $fields,
             [ 'id' => $id, 'tenant_id' => $tenantId ],
@@ -250,10 +261,10 @@ final class OpportunityRepository {
      * Actualiza el valor estimado de la oportunidad.
      */
     public function updateValue( int $id, int $tenantId, float $value, string $currency = 'ARS' ): bool {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table   = $wpdb->prefix . 'infouno_opportunities';
-        $updated = $wpdb->update(
+        $table   = $this->table();
+        $updated = $this->db->update(
             $table,
             [ 'estimated_value' => $value, 'currency' => strtoupper( substr( $currency, 0, 3 ) ) ],
             [ 'id' => $id, 'tenant_id' => $tenantId ],
@@ -276,11 +287,11 @@ final class OpportunityRepository {
         ?int   $leadId        = null,
         ?array $metadata      = null
     ): int {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_automation_logs';
+        $table = $this->db->prefix . 'infouno_automation_logs';
 
-        $wpdb->insert(
+        $this->db->insert(
             $table,
             [
                 'tenant_id'      => $tenantId,
@@ -293,6 +304,6 @@ final class OpportunityRepository {
             [ '%d', '%d', '%d', '%s', '%s', '%s' ]
         );
 
-        return (int) $wpdb->insert_id;
+        return (int) $this->db->insert_id;
     }
 }

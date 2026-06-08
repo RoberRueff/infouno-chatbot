@@ -6,6 +6,7 @@ namespace Infouno\SaaS\API;
 
 use Infouno\SaaS\Bot\BotManager;
 use Infouno\SaaS\Chat\ConversationRepository;
+use Infouno\SaaS\Persistence\ConsentRepository;
 
 /**
  * Registro server-side de consentimiento — Ley 25.326 Argentina.
@@ -24,6 +25,7 @@ final class ConsentController {
     public function __construct(
         private readonly BotManager             $botManager,
         private readonly ConversationRepository $conversationRepo,
+        private readonly ConsentRepository      $consentRepo,
     ) {}
 
     public function registerRoutes( string $namespace ): void {
@@ -106,8 +108,6 @@ final class ConsentController {
      * Idempotente: si ya existe un registro de chat para esta sesión + bot, retorna 200 sin duplicar.
      */
     public function record( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-        global $wpdb;
-
         $botToken  = $request->get_param( 'bot_token' );
         $sessionId = $request->get_param( 'session_id' );
         $origin    = sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ?? '' ) );
@@ -123,34 +123,21 @@ final class ConsentController {
 
         $botId    = (int) $bot['id'];
         $tenantId = (int) $bot['tenant_id'];
-        $table    = $wpdb->prefix . 'infouno_consents';
         $hashes   = $this->buildHashes( $sessionId );
+        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
 
-        // Filtra por scope='chat' para no confundir con filas de lead_capture.
-        $exists = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$table}` WHERE bot_id = %d AND session_hash = %s AND scope = 'chat' LIMIT 1",
-                $botId,
-                $hashes['session']
-            )
-        );
-
-        if ( $exists ) {
+        if ( $this->consentRepo->consentExistsByBot( $botId, $hashes['session'], 'chat' ) ) {
             return new \WP_REST_Response( [ 'recorded' => false, 'reason' => 'already_consented' ], 200 );
         }
 
-        $wpdb->insert(
-            $table,
-            [
-                'bot_id'          => $botId,
-                'tenant_id'       => $tenantId,
-                'session_hash'    => $hashes['session'],
-                'consent_version' => defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0',
-                'scope'           => 'chat',
-                'ip_hash'         => $hashes['ip'],
-                'user_agent_hash' => $hashes['ua'],
-            ],
-            [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+        $this->consentRepo->recordConsentRow(
+            $tenantId,
+            $botId,
+            $hashes['session'],
+            'chat',
+            $version,
+            $hashes['ip'],
+            $hashes['ua'],
         );
 
         return new \WP_REST_Response( [ 'recorded' => true ], 201 );
@@ -166,8 +153,6 @@ final class ConsentController {
      * Idempotente: si ya existe un registro para esta sesión + bot, retorna 200 sin duplicar.
      */
     public function recordLead( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-        global $wpdb;
-
         $botToken  = $request->get_param( 'bot_token' );
         $sessionId = $request->get_param( 'session_id' );
         $scopes    = (array) $request->get_param( 'scopes' );
@@ -187,60 +172,32 @@ final class ConsentController {
         $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
         $hashes   = $this->buildHashes( $sessionId );
 
-        $tableLeadConsents = $wpdb->prefix . 'infouno_lead_consents';
-
-        $exists = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$tableLeadConsents}` WHERE bot_id = %d AND session_hash = %s LIMIT 1",
-                $botId,
-                $hashes['session']
-            )
-        );
-
-        if ( $exists ) {
+        if ( $this->consentRepo->leadConsentExists( $botId, $hashes['session'] ) ) {
             return new \WP_REST_Response( [ 'recorded' => false, 'reason' => 'already_consented' ], 200 );
         }
 
-        $wpdb->insert(
-            $tableLeadConsents,
-            [
-                'tenant_id'         => $tenantId,
-                'bot_id'            => $botId,
-                'session_hash'      => $hashes['session'],
-                'can_capture_name'  => (int) ! empty( $scopes['name'] ),
-                'can_capture_phone' => (int) ! empty( $scopes['phone'] ),
-                'can_capture_email' => (int) ! empty( $scopes['email'] ),
-                'consent_version'   => $version,
-                'ip_hash'           => $hashes['ip'],
-                'user_agent_hash'   => $hashes['ua'],
-            ],
-            [ '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s', '%s' ]
+        $this->consentRepo->recordLeadConsentRow(
+            $tenantId,
+            $botId,
+            $hashes['session'],
+            ! empty( $scopes['name'] ),
+            ! empty( $scopes['phone'] ),
+            ! empty( $scopes['email'] ),
+            $version,
+            $hashes['ip'],
+            $hashes['ua'],
         );
 
-        // Registrar evidencia en wp_infouno_consents con scope='lead_capture'.
-        // Proporciona un segundo registro legal independiente de wp_infouno_lead_consents.
-        $tableConsents = $wpdb->prefix . 'infouno_consents';
-        $auditExists   = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$tableConsents}` WHERE bot_id = %d AND session_hash = %s AND scope = 'lead_capture' LIMIT 1",
+        // Evidencia legal independiente en wp_infouno_consents con scope='lead_capture'.
+        if ( ! $this->consentRepo->consentExistsByBot( $botId, $hashes['session'], 'lead_capture' ) ) {
+            $this->consentRepo->recordConsentRow(
+                $tenantId,
                 $botId,
-                $hashes['session']
-            )
-        );
-
-        if ( ! $auditExists ) {
-            $wpdb->insert(
-                $tableConsents,
-                [
-                    'bot_id'          => $botId,
-                    'tenant_id'       => $tenantId,
-                    'session_hash'    => $hashes['session'],
-                    'consent_version' => $version,
-                    'scope'           => 'lead_capture',
-                    'ip_hash'         => $hashes['ip'],
-                    'user_agent_hash' => $hashes['ua'],
-                ],
-                [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+                $hashes['session'],
+                'lead_capture',
+                $version,
+                $hashes['ip'],
+                $hashes['ua'],
             );
         }
 
@@ -265,8 +222,6 @@ final class ConsentController {
      * como evidencia legal — solo se añade el registro de revocación.
      */
     public function revoke( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-        global $wpdb;
-
         $botToken  = $request->get_param( 'bot_token' );
         $sessionId = $request->get_param( 'session_id' );
         $origin    = sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ?? '' ) );
@@ -283,62 +238,27 @@ final class ConsentController {
         $botId    = (int) $bot['id'];
         $tenantId = (int) $bot['tenant_id'];
         $hashes   = $this->buildHashes( $sessionId );
+        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
 
-        // 1. Anonimizar mensajes y conversaciones (manejo del gap pre-existente también)
+        // 1. Anonimizar mensajes y conversaciones.
         $messagesProcessed = $this->conversationRepo->deleteSession( $sessionId, $tenantId );
 
-        // 2. Anonimizar PII en leads — la supresión de datos es el derecho central del Art. 16
-        $tableLeads = $wpdb->prefix . 'infouno_leads';
-        $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE `{$tableLeads}`
-                 SET name = NULL, phone = NULL, email = NULL
-                 WHERE session_hash = %s AND tenant_id = %d",
-                $hashes['session'],
-                $tenantId
-            )
-        );
+        // 2. Anonimizar PII en leads — supresión de datos, núcleo del Art. 16.
+        $this->consentRepo->anonymizeLeadPii( $tenantId, $hashes['session'] );
 
-        // 3. Desactivar flags de captura futura — el usuario no puede ser registrado de nuevo
-        //    sin un nuevo ciclo de consentimiento explícito.
-        $tableLeadConsents = $wpdb->prefix . 'infouno_lead_consents';
-        $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE `{$tableLeadConsents}`
-                 SET can_capture_name = 0, can_capture_phone = 0, can_capture_email = 0
-                 WHERE session_hash = %s AND bot_id = %d",
-                $hashes['session'],
-                $botId
-            )
-        );
+        // 3. Desactivar flags de captura futura.
+        $this->consentRepo->revokeCaptureFlags( $botId, $hashes['session'] );
 
-        // 4. Registrar la revocación como audit trail inmutable.
-        //    El registro original (accepted_at, ip_hash, ua_hash) se preserva — es
-        //    evidencia de que el consentimiento existió. Este nuevo registro certifica cuándo
-        //    fue revocado, cumpliendo el principio de trazabilidad.
-        $tableConsents = $wpdb->prefix . 'infouno_consents';
-        $auditExists   = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$tableConsents}`
-                 WHERE bot_id = %d AND session_hash = %s AND scope = 'consent_revoked' LIMIT 1",
+        // 4. Audit trail inmutable de la revocación (el registro original se preserva).
+        if ( ! $this->consentRepo->consentExistsByBot( $botId, $hashes['session'], 'consent_revoked' ) ) {
+            $this->consentRepo->recordConsentRow(
+                $tenantId,
                 $botId,
-                $hashes['session']
-            )
-        );
-
-        if ( ! $auditExists ) {
-            $wpdb->insert(
-                $tableConsents,
-                [
-                    'bot_id'          => $botId,
-                    'tenant_id'       => $tenantId,
-                    'session_hash'    => $hashes['session'],
-                    'consent_version' => defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0',
-                    'scope'           => 'consent_revoked',
-                    'ip_hash'         => $hashes['ip'],
-                    'user_agent_hash' => $hashes['ua'],
-                ],
-                [ '%d', '%d', '%s', '%s', '%s', '%s', '%s' ]
+                $hashes['session'],
+                'consent_revoked',
+                $version,
+                $hashes['ip'],
+                $hashes['ua'],
             );
         }
 

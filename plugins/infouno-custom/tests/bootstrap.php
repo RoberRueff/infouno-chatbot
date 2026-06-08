@@ -31,6 +31,12 @@ if ( ! function_exists( 'sanitize_email' ) ) {
     }
 }
 
+if ( ! function_exists( 'wp_unslash' ) ) {
+    function wp_unslash( mixed $value ): mixed {
+        return is_string( $value ) ? stripslashes( $value ) : $value;
+    }
+}
+
 if ( ! function_exists( 'sanitize_text_field' ) ) {
     function sanitize_text_field( string $str ): string {
         return trim( strip_tags( $str ) );

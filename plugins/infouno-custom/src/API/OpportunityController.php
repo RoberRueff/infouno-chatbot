@@ -166,33 +166,18 @@ final class OpportunityController {
         $tenantId = (int) $tenant['id'];
         $leadId   = (int) $request->get_param( 'lead_id' );
 
-        // Verificar que el lead pertenece al tenant antes de crear la oportunidad.
-        global $wpdb;
-        $leadExists = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM `{$wpdb->prefix}infouno_leads` WHERE id = %d AND tenant_id = %d",
-                $leadId,
-                $tenantId
-            )
-        );
+        // Leer el lead de origen (existencia + score + bot_id) en una sola query.
+        $snapshot = $this->repository->getLeadSnapshotForTenant( $leadId, $tenantId );
 
-        if ( ! $leadExists ) {
+        if ( $snapshot === null ) {
             return new \WP_Error( 'lead_not_found', 'Lead no encontrado.', [ 'status' => 404 ] );
         }
 
         // Verificar que el lead tiene score suficiente (R1 del opportunity-engine.md).
-        $leadScore = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT score FROM `{$wpdb->prefix}infouno_leads` WHERE id = %d AND tenant_id = %d",
-                $leadId,
-                $tenantId
-            )
-        );
-
-        if ( $leadScore < OpportunityService::QUALIFIED_THRESHOLD ) {
+        if ( $snapshot['score'] < OpportunityService::QUALIFIED_THRESHOLD ) {
             return new \WP_Error(
                 'lead_not_qualified',
-                sprintf( 'El lead tiene score %d. Se requiere score ≥ %d para crear una oportunidad.', $leadScore, OpportunityService::QUALIFIED_THRESHOLD ),
+                sprintf( 'El lead tiene score %d. Se requiere score ≥ %d para crear una oportunidad.', $snapshot['score'], OpportunityService::QUALIFIED_THRESHOLD ),
                 [ 'status' => 422 ]
             );
         }
@@ -202,18 +187,10 @@ final class OpportunityController {
             return new \WP_REST_Response( $this->sanitizeOutput( $existing ), 200 );
         }
 
-        $botId = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT bot_id FROM `{$wpdb->prefix}infouno_leads` WHERE id = %d AND tenant_id = %d",
-                $leadId,
-                $tenantId
-            )
-        );
-
         $oppId = $this->repository->create( [
             'tenant_id'       => $tenantId,
             'lead_id'         => $leadId,
-            'bot_id'          => $botId,
+            'bot_id'          => $snapshot['bot_id'],
             'estimated_value' => $request->get_param( 'estimated_value' ),
             'currency'        => $request->get_param( 'currency' ) ?? 'ARS',
             'notes'           => $request->get_param( 'notes' ),

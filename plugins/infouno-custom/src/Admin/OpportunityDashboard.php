@@ -306,39 +306,10 @@ final class OpportunityDashboard {
 
     /**
      * Obtiene oportunidades con datos del lead (nombre, contacto, bot) en una sola query.
+     * Delega en la capa de persistencia (OpportunityRepository) — sin SQL crudo acá.
      */
     private function getOpportunitiesWithLeadData( int $tenantId, ?string $stage ): array {
-        global $wpdb;
-
-        $oppTable   = $wpdb->prefix . 'infouno_opportunities';
-        $leadsTable = $wpdb->prefix . 'infouno_leads';
-        $botsTable  = $wpdb->prefix . 'infouno_bots';
-
-        $where = $wpdb->prepare( 'WHERE o.tenant_id = %d', $tenantId );
-        if ( $stage !== null && in_array( $stage, OpportunityRepository::STAGES, true ) ) {
-            $where .= $wpdb->prepare( ' AND o.stage = %s', $stage );
-        }
-
-        // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-        return $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT o.id, o.lead_id, o.bot_id, o.stage, o.estimated_value, o.currency,
-                        o.lost_reason, o.stage_changed_at, o.won_at, o.lost_at, o.created_at,
-                        l.name  AS lead_name,
-                        l.email AS lead_email,
-                        l.phone AS lead_phone,
-                        b.bot_name
-                 FROM `{$oppTable}` o
-                 LEFT JOIN `{$leadsTable}` l ON l.id = o.lead_id AND l.tenant_id = o.tenant_id
-                 LEFT JOIN `{$botsTable}`  b ON b.id = o.bot_id  AND b.tenant_id = o.tenant_id
-                 {$where}
-                 ORDER BY FIELD(o.stage,'new','contacted','interested','quoted','lost','won'),
-                          o.created_at DESC
-                 LIMIT %d",
-                100
-            ),
-            ARRAY_A
-        ) ?: [];
+        return $this->opportunityRepo->listWithLeadDataForTenant( $tenantId, $stage );
     }
 
     private function getCurrentTenantId(): int {

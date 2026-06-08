@@ -250,6 +250,16 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
     }
 }
 
+if ( ! function_exists( 'get_userdata' ) ) {
+    function get_userdata( int $userId ) {
+        $email = $GLOBALS['__infouno_user_emails'][ $userId ] ?? ( 'user' . $userId . '@example.com' );
+        return (object) [ 'ID' => $userId, 'user_email' => $email ];
+    }
+}
+if ( ! isset( $GLOBALS['__infouno_user_emails'] ) ) {
+    $GLOBALS['__infouno_user_emails'] = [];
+}
+
 if ( ! function_exists( 'is_wp_error' ) ) {
     function is_wp_error( mixed $thing ): bool {
         return $thing instanceof \WP_Error;

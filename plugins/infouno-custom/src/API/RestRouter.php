@@ -82,6 +82,27 @@ final class RestRouter {
         $this->leadController->registerRoutes( self::NAMESPACE );
         $this->opportunityController->registerRoutes( self::NAMESPACE );
         $this->channelWebhookController->registerRoutes( self::NAMESPACE );
+
+        $billingConfig    = new \Infouno\SaaS\Billing\BillingConfig();
+        $subscriptionRepo = new \Infouno\SaaS\Persistence\SubscriptionRepository();
+        $mpClient         = new \Infouno\SaaS\Billing\MercadoPagoClient(
+            new \Infouno\SaaS\Billing\WpHttpClient(),
+            $billingConfig->accessToken()
+        );
+        $billingService   = new \Infouno\SaaS\Billing\SubscriptionService(
+            $mpClient,
+            $subscriptionRepo,
+            $this->tenantManager,
+            home_url( '/billing/return' )
+        );
+        $billingController = new BillingController(
+            $this->tenantManager,
+            $billingService,
+            new \Infouno\SaaS\Billing\WebhookSignatureVerifier( $billingConfig->webhookSecret() ),
+            $subscriptionRepo,
+            $billingConfig
+        );
+        $billingController->registerRoutes( self::NAMESPACE );
     }
 
     public function health( \WP_REST_Request $request ): \WP_REST_Response {

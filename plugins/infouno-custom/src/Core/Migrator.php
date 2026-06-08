@@ -38,10 +38,11 @@ namespace Infouno\SaaS\Core;
  *   v10 — WhatsApp Hardening (Bloque B): wp_infouno_channel_templates (plantillas Meta
  *          aprobadas por tenant) + wp_infouno_channel_deliveries (estado de entregas
  *          salientes con wamid de la Graph API).
+ *   v11 — MercadoPago Suscripciones: wp_infouno_subscriptions + wp_infouno_payment_events.
  */
 final class Migrator {
 
-    const DB_VERSION        = '10';
+    const DB_VERSION             = '11';
     const DB_VERSION_OPTION = 'infouno_db_version';
 
     public function run(): void {
@@ -79,6 +80,10 @@ final class Migrator {
             $this->migrateTo10( $wpdb, $charset );
         }
 
+        if ( version_compare( $current, '1', '>=' ) && version_compare( $current, '11', '<' ) ) {
+            $this->migrateTo11( $wpdb );
+        }
+
         // Fresh install: crea todas las tablas que aún no existan (dbDelta es idempotente).
         $this->createTenantsTable( $wpdb, $charset );
         $this->createBotsTable( $wpdb, $charset );
@@ -93,6 +98,8 @@ final class Migrator {
         $this->createChannelEventsTable( $wpdb, $charset );
         $this->createChannelTemplatesTable( $wpdb, $charset );
         $this->createChannelDeliveriesTable( $wpdb, $charset );
+        $this->createSubscriptionsTable( $wpdb );
+        $this->createPaymentEventsTable( $wpdb );
 
         $this->migrateQuotasToTokens( $wpdb );
 
@@ -712,6 +719,55 @@ final class Migrator {
             KEY status     (status)
         ) {$charset};";
 
+        dbDelta( $sql );
+    }
+
+    /**
+     * v11 — MercadoPago Suscripciones: wp_infouno_subscriptions + wp_infouno_payment_events.
+     */
+    private function migrateTo11( \wpdb $wpdb ): void {
+        $this->createSubscriptionsTable( $wpdb );
+        $this->createPaymentEventsTable( $wpdb );
+    }
+
+    private function createSubscriptionsTable( \wpdb $wpdb ): void {
+        $table   = $wpdb->prefix . 'infouno_subscriptions';
+        $collate = $wpdb->get_charset_collate();
+        $sql     = "CREATE TABLE {$table} (
+            id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id         BIGINT UNSIGNED NOT NULL,
+            mp_preapproval_id VARCHAR(255)    NOT NULL,
+            plan              VARCHAR(50)     NOT NULL DEFAULT 'premium',
+            status            VARCHAR(20)     NOT NULL DEFAULT 'pending',
+            amount            DECIMAL(12,2)   NOT NULL DEFAULT 0,
+            currency          VARCHAR(3)      NOT NULL DEFAULT 'ARS',
+            next_payment_at   DATETIME        NULL,
+            last_event_ts     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            created_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY uq_preapproval (mp_preapproval_id),
+            KEY tenant (tenant_id),
+            KEY status (status)
+        ) {$collate};";
+        dbDelta( $sql );
+    }
+
+    private function createPaymentEventsTable( \wpdb $wpdb ): void {
+        $table   = $wpdb->prefix . 'infouno_payment_events';
+        $collate = $wpdb->get_charset_collate();
+        $sql     = "CREATE TABLE {$table} (
+            id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id         BIGINT UNSIGNED NOT NULL,
+            mp_payment_id     VARCHAR(255)    NOT NULL,
+            mp_preapproval_id VARCHAR(255)    NOT NULL,
+            status            VARCHAR(20)     NOT NULL,
+            amount            DECIMAL(12,2)   NOT NULL DEFAULT 0,
+            processed_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY uq_payment (mp_payment_id),
+            KEY tenant (tenant_id)
+        ) {$collate};";
         dbDelta( $sql );
     }
 }

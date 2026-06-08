@@ -332,6 +332,31 @@ final class TenantManager {
     }
 
     /**
+     * Aplica un cambio de plan + estado al tenant, derivando quota_limit del plan.
+     * Usado por billing (activar premium, suspender, bajar a free).
+     */
+    public function applyPlanChange( int $tenantId, string $plan, string $status ): void {
+        global $wpdb;
+
+        if ( ! array_key_exists( $plan, self::PLAN_QUOTAS ) ) {
+            throw new \InvalidArgumentException( "Plan inválido: {$plan}" );
+        }
+
+        $table = $wpdb->prefix . 'infouno_tenants';
+        $wpdb->update(
+            $table,
+            [
+                'plan'        => $plan,
+                'status'      => $status,
+                'quota_limit' => self::PLAN_QUOTAS[ $plan ],
+            ],
+            [ 'id' => $tenantId ],
+            [ '%s', '%s', '%d' ],
+            [ '%d' ]
+        );
+    }
+
+    /**
      * Resetea quota_used = 0 para todos los tenants cuyo quota_reset_at ya venció.
      * Avanza quota_reset_at +30 días para el siguiente ciclo.
      * Llamado por wp_cron via Plugin::resetMonthlyQuotas().

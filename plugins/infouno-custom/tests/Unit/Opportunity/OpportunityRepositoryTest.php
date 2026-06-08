@@ -111,4 +111,39 @@ final class OpportunityRepositoryTest extends TestCase {
         ( new OpportunityRepository() )->updateValue( 9, 3, 250.0, 'usd' );
         $this->assertSame( [ 'id' => 9, 'tenant_id' => 3 ], $GLOBALS['wpdb']->last_update_where );
     }
+
+    // ── updateStage: guardrail comercial R8 (won/lost terminales) ─────────
+
+    public function test_updateStage_blocks_terminal_stage(): void {
+        // El lead ya está 'won' → no puede cambiar de stage; no debe llamar update().
+        $GLOBALS['wpdb']->stub_get_row     = [ 'id' => 1, 'stage' => 'won' ];
+        $GLOBALS['wpdb']->last_update_where = [ 'sentinel' => true ];
+
+        $changed = ( new OpportunityRepository() )->updateStage( 1, 3, 'contacted' );
+
+        $this->assertFalse( $changed );
+        // El UPDATE no se ejecutó: el WHERE quedó con el sentinel intacto.
+        $this->assertSame( [ 'sentinel' => true ], $GLOBALS['wpdb']->last_update_where );
+    }
+
+    public function test_updateStage_advances_active_stage_and_sets_won_at(): void {
+        $GLOBALS['wpdb']->stub_get_row = [ 'id' => 1, 'stage' => 'interested' ];
+
+        $changed = ( new OpportunityRepository() )->updateStage( 1, 3, 'won' );
+
+        $this->assertTrue( $changed );
+        $this->assertSame( 'won', $GLOBALS['wpdb']->last_update_data['stage'] );
+        $this->assertArrayHasKey( 'won_at', $GLOBALS['wpdb']->last_update_data );
+        $this->assertSame( [ 'id' => 1, 'tenant_id' => 3 ], $GLOBALS['wpdb']->last_update_where );
+    }
+
+    // ── listForTenant: aislamiento + filtro de stage ─────────────────────
+
+    public function test_listForTenant_includes_tenant_and_optional_stage_filter(): void {
+        $GLOBALS['wpdb']->stub_get_results = [];
+        ( new OpportunityRepository() )->listForTenant( 3, 'quoted' );
+        $q = $GLOBALS['wpdb']->last_query;
+        $this->assertStringContainsString( 'tenant_id = 3', $q );
+        $this->assertStringContainsString( "stage = 'quoted'", $q );
+    }
 }

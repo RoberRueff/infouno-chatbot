@@ -11,6 +11,7 @@ namespace Infouno\SaaS\Lead;
  *   3. Guarda o actualiza el lead en LeadRepository.
  *   4. Despacha el hook 'infouno_lead_captured' para notificaciones externas.
  *
+ * Todo SQL delega a LeadRepository — este servicio no usa $wpdb directamente.
  * Este servicio es no-crítico: cualquier fallo debe silenciarse en el caller
  * para no interrumpir el flujo del chat.
  */
@@ -35,7 +36,7 @@ final class LeadService {
         string $userMessage,
         array  $conversationHistory = []
     ): void {
-        $consents = $this->getConsents( $sessionId, $botId );
+        $consents = $this->repository->getConsentsForSession( $sessionId, $botId );
 
         if ( empty( $consents ) ) {
             return;
@@ -79,41 +80,5 @@ final class LeadService {
         if ( $result['is_qualified'] && $leadId > 0 ) {
             do_action( 'infouno_lead_captured', $leadId, $tenantId, $botId, $result );
         }
-    }
-
-    /**
-     * Recupera los flags de consentimiento granular de una sesión en una sola query.
-     * Evita las 3 queries separadas de hasConsent() cuando se procesan mensajes.
-     *
-     * @return array{can_capture_name: int, can_capture_phone: int, can_capture_email: int}|array{}
-     */
-    private function getConsents( string $sessionId, int $botId ): array {
-        global $wpdb;
-
-        $sessionHash = hash( 'sha256', $sessionId );
-
-        $row = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT can_capture_name, can_capture_phone, can_capture_email
-                 FROM `{$wpdb->prefix}infouno_lead_consents`
-                 WHERE session_hash = %s AND bot_id = %d
-                 ORDER BY accepted_at DESC
-                 LIMIT 1",
-                $sessionHash,
-                $botId
-            ),
-            ARRAY_A
-        );
-
-        // Si no hay registro o ningún campo fue consentido, retorna array vacío
-        if ( ! $row ) {
-            return [];
-        }
-
-        $hasAny = (int) $row['can_capture_name']
-                + (int) $row['can_capture_phone']
-                + (int) $row['can_capture_email'];
-
-        return $hasAny > 0 ? $row : [];
     }
 }

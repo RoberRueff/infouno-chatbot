@@ -84,14 +84,17 @@ class WpdbStub extends \wpdb {
     }
 
     public function get_row( string $query, string $output = 'ARRAY_A' ): mixed {
+        $this->last_query = $query;
         return $this->stub_get_row;
     }
 
     public function get_var( string $query ): mixed {
+        $this->last_query = $query;
         return $this->stub_get_var;
     }
 
     public function get_results( string $query, string $output = 'ARRAY_A' ): mixed {
+        $this->last_query = $query;
         return $this->stub_get_results;
     }
 
@@ -109,15 +112,25 @@ class WpdbStub extends \wpdb {
         return 1;
     }
 
+    /** @var array<string,mixed> Datos del último update(). */
+    public array $last_update_data = [];
+    /** @var array<string,mixed> Cláusula WHERE del último update() — clave para verificar aislamiento por tenant. */
+    public array $last_update_where = [];
+
     public function update( string $table, array $data, array $where, array $formats = [], array $whereFormats = [] ): int|false {
+        $this->last_update_data  = $data;
+        $this->last_update_where = $where;
         return 1;
     }
 
     public mixed  $stub_query_result = 0;
     public string $last_query        = '';
+    /** Stores the last SQL sent via query() (write path). */
+    public string $last_write_query  = '';
 
     public function query( string $query ): mixed {
-        $this->last_query = $query;
+        $this->last_query       = $query;
+        $this->last_write_query = $query;
         return $this->stub_query_result;
     }
 
@@ -222,10 +235,29 @@ if ( ! function_exists( 'add_filter' ) ) {
     }
 }
 
+if ( ! class_exists( 'WP_Error' ) ) {
+    class WP_Error {
+        public function __construct(
+            public string $code    = '',
+            public string $message = '',
+            public mixed  $data    = null,
+        ) {}
+    }
+}
+
 if ( ! function_exists( 'current_time' ) ) {
     function current_time( string $type, int $gmt = 0 ): string {
         return gmdate( 'Y-m-d H:i:s' );
     }
+}
+
+if ( ! function_exists( 'get_current_user_id' ) ) {
+    function get_current_user_id(): int {
+        return $GLOBALS['__infouno_current_user_id'] ?? 1;
+    }
+}
+if ( ! isset( $GLOBALS['__infouno_current_user_id'] ) ) {
+    $GLOBALS['__infouno_current_user_id'] = 1;
 }
 
 $GLOBALS['wpdb'] = new WpdbStub();

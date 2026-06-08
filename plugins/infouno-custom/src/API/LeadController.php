@@ -1,9 +1,10 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Infouno\SaaS\API;
 
+use Infouno\SaaS\Lead\LeadRepository;
+use Infouno\SaaS\Persistence\MissingTenantScopeException;
 use Infouno\SaaS\Tenant\TenantManager;
 
 /**
@@ -11,17 +12,18 @@ use Infouno\SaaS\Tenant\TenantManager;
  *
  * Rutas registradas bajo /infouno/v1/:
  *   GET  /leads              — Listado paginado de leads del tenant autenticado.
- *   GET  /leads/export       — Descarga CSV de leads (via admin-post, ver LeadDashboard).
- *   PUT  /leads/{id}/status  — Actualiza estado de un lead (new/contacted/interested/converted/lost).
+ *   PUT  /leads/{id}/status  — Actualiza estado de un lead.
  *
- * Toda query filtra por tenant_id derivado de la sesión WP — nunca del request.
+ * Todo SQL vive en LeadRepository — este controller no usa $wpdb directamente.
+ * El tenant se resuelve fail-closed: sin tenant activo → HTTP 500 (bug de programación).
  */
 final class LeadController {
 
     private const VALID_STATUSES = [ 'new', 'contacted', 'interested', 'converted', 'lost' ];
 
     public function __construct(
-        private readonly TenantManager $tenantManager,
+        private readonly TenantManager  $tenantManager,
+        private readonly LeadRepository $leadRepository,
     ) {}
 
     public function registerRoutes( string $namespace ): void {
@@ -76,61 +78,26 @@ final class LeadController {
      * Filtra opcionalmente por estado. Pagina de 50 en 50.
      */
     public function index( \WP_REST_Request $request ): \WP_REST_Response {
-        global $wpdb;
-
-        $tenantId  = $this->getTenantId();
-        $status    = $request->get_param( 'status' );
-        $page      = max( 1, (int) $request->get_param( 'page' ) );
-        $perPage   = 50;
-        $offset    = ( $page - 1 ) * $perPage;
-
-        $leadsTable = $wpdb->prefix . 'infouno_leads';
-        $botsTable  = $wpdb->prefix . 'infouno_bots';
-
-        if ( $status && in_array( $status, self::VALID_STATUSES, true ) ) {
-            $rows = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT l.id, l.name, l.email, l.phone, l.interest,
-                            l.score, l.status, l.source, l.notes, l.created_at,
-                            b.bot_name,
-                            CASE WHEN l.score >= 80 THEN 'alta'
-                                 WHEN l.score >= 60 THEN 'media'
-                                 ELSE 'baja' END AS prioridad
-                     FROM `{$leadsTable}` l
-                     INNER JOIN `{$botsTable}` b ON b.id = l.bot_id AND b.tenant_id = l.tenant_id
-                     WHERE l.tenant_id = %d AND l.status = %s
-                     ORDER BY l.score DESC, l.created_at DESC
-                     LIMIT %d OFFSET %d",
-                    $tenantId,
-                    $status,
-                    $perPage,
-                    $offset
-                ),
-                ARRAY_A
-            );
-        } else {
-            $rows = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT l.id, l.name, l.email, l.phone, l.interest,
-                            l.score, l.status, l.source, l.notes, l.created_at,
-                            b.bot_name,
-                            CASE WHEN l.score >= 80 THEN 'alta'
-                                 WHEN l.score >= 60 THEN 'media'
-                                 ELSE 'baja' END AS prioridad
-                     FROM `{$leadsTable}` l
-                     INNER JOIN `{$botsTable}` b ON b.id = l.bot_id AND b.tenant_id = l.tenant_id
-                     WHERE l.tenant_id = %d
-                     ORDER BY l.score DESC, l.created_at DESC
-                     LIMIT %d OFFSET %d",
-                    $tenantId,
-                    $perPage,
-                    $offset
-                ),
-                ARRAY_A
-            );
+        try {
+            $tenantId = $this->requireTenantId();
+        } catch ( MissingTenantScopeException $e ) {
+            error_log( '[INFOUNO-LEAD] MissingTenantScopeException en index(): ' . $e->getMessage() );
+            return new \WP_REST_Response( [ 'error' => 'Error interno del servidor.' ], 500 );
         }
 
-        return new \WP_REST_Response( $rows ?: [], 200 );
+        $status  = $request->get_param( 'status' );
+        $page    = max( 1, (int) $request->get_param( 'page' ) );
+        $perPage = 50;
+        $offset  = ( $page - 1 ) * $perPage;
+
+        $rows = $this->leadRepository->listForTenant(
+            tenantId: $tenantId,
+            status:   $status && in_array( $status, self::VALID_STATUSES, true ) ? $status : null,
+            limit:    $perPage,
+            offset:   $offset,
+        );
+
+        return new \WP_REST_Response( $rows, 200 );
     }
 
     /**
@@ -140,52 +107,26 @@ final class LeadController {
      * Verifica ownership por tenant_id antes de actualizar.
      */
     public function updateStatus( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-        global $wpdb;
+        try {
+            $tenantId = $this->requireTenantId();
+        } catch ( MissingTenantScopeException $e ) {
+            error_log( '[INFOUNO-LEAD] MissingTenantScopeException en updateStatus(): ' . $e->getMessage() );
+            return new \WP_REST_Response( [ 'error' => 'Error interno del servidor.' ], 500 );
+        }
 
-        $tenantId = $this->getTenantId();
-        $leadId   = (int) $request->get_param( 'id' );
-        $status   = $request->get_param( 'status' );
-        $notes    = $request->get_param( 'notes' );
+        $leadId = (int) $request->get_param( 'id' );
+        $status = $request->get_param( 'status' );
+        $notes  = $request->get_param( 'notes' );
 
-        $table = $wpdb->prefix . 'infouno_leads';
-
-        // Verifica ownership — guardrail de aislamiento
-        $exists = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$table}` WHERE id = %d AND tenant_id = %d LIMIT 1",
-                $leadId,
-                $tenantId
-            )
-        );
-
-        if ( ! $exists ) {
+        if ( ! $this->leadRepository->verifyOwnership( leadId: $leadId, tenantId: $tenantId ) ) {
             return new \WP_Error( 'lead_not_found', 'Lead no encontrado.', [ 'status' => 404 ] );
         }
 
-        $updateData    = [ 'status' => $status ];
-        $updateFormats = [ '%s' ];
-
-        if ( $notes !== null ) {
-            $updateData['notes'] = $notes;
-            $updateFormats[]     = '%s';
-        }
-
-        if ( 'contacted' === $status ) {
-            $updateData['contacted_at'] = gmdate( 'Y-m-d H:i:s' );
-            $updateFormats[]            = '%s';
-        }
-
-        if ( 'converted' === $status ) {
-            $updateData['converted_at'] = gmdate( 'Y-m-d H:i:s' );
-            $updateFormats[]            = '%s';
-        }
-
-        $wpdb->update(
-            $table,
-            $updateData,
-            [ 'id' => $leadId, 'tenant_id' => $tenantId ],
-            $updateFormats,
-            [ '%d', '%d' ]
+        $this->leadRepository->updateStatusForTenant(
+            leadId:   $leadId,
+            tenantId: $tenantId,
+            status:   $status,
+            notes:    $notes,
         );
 
         return new \WP_REST_Response( [ 'updated' => true, 'status' => $status ], 200 );
@@ -204,8 +145,14 @@ final class LeadController {
         return true;
     }
 
-    private function getTenantId(): int {
-        $tenant = $this->tenantManager->getForCurrentUser();
-        return $tenant ? (int) $tenant['id'] : 0;
+    /**
+     * Resuelve el tenant del usuario actual de forma fail-closed.
+     * Lanza MissingTenantScopeException si no hay tenant — error de programación
+     * (el permission_callback ya garantizó que hay tenant antes de llegar aquí).
+     *
+     * @throws MissingTenantScopeException
+     */
+    private function requireTenantId(): int {
+        return (int) $this->tenantManager->requireForCurrentUser()['id'];
     }
 }

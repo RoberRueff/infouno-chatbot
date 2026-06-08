@@ -20,8 +20,8 @@ use PHPUnit\Framework\TestCase;
  *   - Lead no calificado sin PII → no se persiste.
  *   - Consentimiento por campo: solo persiste los datos autorizados.
  *
- * Estrategia: se mockean LeadScorer y LeadRepository; el $wpdb global
- * del bootstrap stub maneja la query de getConsents().
+ * Estrategia: se mockean LeadScorer y LeadRepository; el consentimiento se
+ * provee mockeando LeadRepository::getConsentsForSession() (ya no via $wpdb).
  */
 final class LeadServiceTest extends TestCase {
 
@@ -38,8 +38,8 @@ final class LeadServiceTest extends TestCase {
     // ── Sin consentimiento ────────────────────────────────────────────────────
 
     public function test_no_processing_without_consent(): void {
-        // $wpdb->get_row retorna null → sin consentimiento registrado
-        $GLOBALS['wpdb']->stub_get_row = null;
+        // getConsentsForSession retorna [] → sin consentimiento registrado
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [] );
 
         $this->scorer->expects( $this->never() )->method( 'analyze' );
         $this->repository->expects( $this->never() )->method( 'save' );
@@ -48,12 +48,8 @@ final class LeadServiceTest extends TestCase {
     }
 
     public function test_no_processing_when_all_consent_flags_zero(): void {
-        // Consentimiento registrado pero todos los flags en 0 → equivale a sin consentimiento
-        $GLOBALS['wpdb']->stub_get_row = [
-            'can_capture_name'  => 0,
-            'can_capture_phone' => 0,
-            'can_capture_email' => 0,
-        ];
+        // Flags todos en 0 → getConsentsForSession colapsa a [] (sin consentimiento efectivo)
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [] );
 
         $this->scorer->expects( $this->never() )->method( 'analyze' );
         $this->repository->expects( $this->never() )->method( 'save' );
@@ -64,11 +60,11 @@ final class LeadServiceTest extends TestCase {
     // ── Con consentimiento ────────────────────────────────────────────────────
 
     public function test_scorer_called_when_consent_exists(): void {
-        $GLOBALS['wpdb']->stub_get_row = [
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [
             'can_capture_name'  => 1,
             'can_capture_phone' => 0,
             'can_capture_email' => 1,
-        ];
+        ] );
 
         $this->scorer
             ->expects( $this->once() )
@@ -81,11 +77,11 @@ final class LeadServiceTest extends TestCase {
     }
 
     public function test_repository_not_called_when_no_score_and_no_pii(): void {
-        $GLOBALS['wpdb']->stub_get_row = [
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [
             'can_capture_name'  => 1,
             'can_capture_phone' => 1,
             'can_capture_email' => 1,
-        ];
+        ] );
 
         $this->scorer
             ->method( 'analyze' )
@@ -99,11 +95,11 @@ final class LeadServiceTest extends TestCase {
     // ── Lead calificado ───────────────────────────────────────────────────────
 
     public function test_hook_fired_when_lead_is_qualified(): void {
-        $GLOBALS['wpdb']->stub_get_row = [
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [
             'can_capture_name'  => 1,
             'can_capture_phone' => 1,
             'can_capture_email' => 1,
-        ];
+        ] );
 
         $scorerResult = $this->buildScorerResult( 75, true );
 
@@ -121,11 +117,11 @@ final class LeadServiceTest extends TestCase {
 
     public function test_only_consented_fields_are_saved(): void {
         // Solo email autorizado — name y phone NO
-        $GLOBALS['wpdb']->stub_get_row = [
+        $this->repository->method( 'getConsentsForSession' )->willReturn( [
             'can_capture_name'  => 0,
             'can_capture_phone' => 0,
             'can_capture_email' => 1,
-        ];
+        ] );
 
         $this->scorer
             ->method( 'analyze' )

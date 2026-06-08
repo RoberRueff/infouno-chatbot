@@ -40,14 +40,14 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
      */
     private const ALLOWLIST = [
         'API/ConsentController.php',
-        'API/LeadController.php',
+        // 'API/LeadController.php',   ← migrado en Increment 2 (Bloque D)
         'API/OpportunityController.php',
         'API/BotController.php',
-        'Admin/LeadDashboard.php',
+        // 'Admin/LeadDashboard.php',  ← migrado en Increment 2 (Bloque D)
         'Admin/OpportunityDashboard.php',
         'Admin/BotDashboard.php',
         'Admin/BotWizard.php',
-        'Lead/LeadService.php',
+        // 'Lead/LeadService.php',     ← migrado en Increment 2 (Bloque D)
         'Channel/ChannelConsentService.php',
     ];
 
@@ -157,8 +157,8 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
      * Self-test: un archivo en la allowlist con $wpdb-> NO se marca como violación.
      */
     public function test_scanner_allows_allowlisted_files(): void {
-        $fakeContent = '<?php $wpdb->get_results("SELECT * FROM wp_leads");';
-        $fakeRel     = 'API/LeadController.php'; // sí está en ALLOWLIST
+        $fakeContent = '<?php $wpdb->get_results("SELECT * FROM wp_consents");';
+        $fakeRel     = 'API/ConsentController.php'; // sí está en ALLOWLIST (legacy aún no migrado)
 
         $hasToken    = str_contains( $fakeContent, self::SQL_TOKEN );
         $allowListed = in_array( $fakeRel, self::ALLOWLIST, true );

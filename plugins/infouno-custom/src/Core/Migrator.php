@@ -42,8 +42,7 @@ namespace Infouno\SaaS\Core;
  */
 final class Migrator {
 
-    const DB_VERSION             = '10';
-    public const INFOUNO_DB_VERSION = '11';
+    const DB_VERSION             = '11';
     const DB_VERSION_OPTION = 'infouno_db_version';
 
     public function run(): void {
@@ -104,7 +103,7 @@ final class Migrator {
 
         $this->migrateQuotasToTokens( $wpdb );
 
-        update_option( self::DB_VERSION_OPTION, self::INFOUNO_DB_VERSION );
+        update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
     }
 
     /**

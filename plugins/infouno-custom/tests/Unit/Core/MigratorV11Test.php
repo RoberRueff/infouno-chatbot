@@ -26,7 +26,7 @@ final class MigratorV11Test extends TestCase {
     }
 
     public function test_db_version_is_11(): void {
-        $this->assertSame( '11', Migrator::INFOUNO_DB_VERSION );
+        $this->assertSame( '11', Migrator::DB_VERSION );
     }
 
     public function test_subscriptions_table_ddl(): void {

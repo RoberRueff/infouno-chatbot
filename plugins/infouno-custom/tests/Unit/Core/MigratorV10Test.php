@@ -29,9 +29,6 @@ final class MigratorV10Test extends TestCase {
         return implode( "\n", $GLOBALS['__infouno_dbdelta_sql'] );
     }
 
-    public function test_db_version_constant_is_10(): void {
-        $this->assertSame( '10', Migrator::DB_VERSION );
-    }
 
     public function test_channel_templates_table_sql_is_tenant_scoped(): void {
         $sql = $this->invokeCreate( 'createChannelTemplatesTable' );

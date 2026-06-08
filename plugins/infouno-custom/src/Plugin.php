@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS;
 
+use Infouno\SaaS\Admin\BillingSettings;
 use Infouno\SaaS\Admin\BotDashboard;
 use Infouno\SaaS\Admin\BotWizard;
 use Infouno\SaaS\Admin\LeadDashboard;
@@ -63,6 +64,7 @@ final class Plugin {
     private LeadDashboard          $leadDashboard;
     private OpportunityDashboard   $opportunityDashboard;
     private BotWizard              $botWizard;
+    private BillingSettings        $billingSettings;
     private ChannelRegistry        $channelRegistry;
     private ChannelRepository      $channelRepository;
     private ChannelEventRepository $channelEventRepository;
@@ -175,6 +177,7 @@ final class Plugin {
         $this->leadDashboard        = new LeadDashboard( $this->tenantManager, $this->leadRepository );
         $this->opportunityDashboard = new OpportunityDashboard( $this->tenantManager, $this->opportunityRepo );
         $this->botWizard            = new BotWizard( $this->botManager, $this->tenantManager );
+        $this->billingSettings      = new BillingSettings();
 
         // Migración directa — no via hook porque plugins_loaded ya está disparado en este punto
         $this->maybeMigrate();
@@ -193,6 +196,9 @@ final class Plugin {
 
         // Opportunity Dashboard
         $this->opportunityDashboard->init();
+
+        // Billing Settings (MercadoPago)
+        $this->billingSettings->init();
 
         // Opportunity Engine — prioridad 20 (posterior al email de notificación en prio 10)
         add_action( 'infouno_lead_captured', [ $this->opportunityService, 'onLeadCaptured' ], 20, 4 );

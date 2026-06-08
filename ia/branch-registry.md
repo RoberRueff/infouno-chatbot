@@ -12,7 +12,7 @@
 | Branch principal | `main` |
 | DB Version activa | `v10` |
 | Fase de producto | **Fase 2 en curso** (Opportunity + Automation + Canales + transporte web + WhatsApp hardening) |
-| Última actualización | 2026-06-07 |
+| Última actualización | 2026-06-08 |
 
 ---
 
@@ -20,13 +20,12 @@
 
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
-| `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening | 2026-06-07 |
-| `feature/tenant-isolation-consents` | 🔵 En PR | Bloque D incremento 3: dominio Consents migrado a `ConsentRepository` (pusheada a origin, PR abierto contra `main`) | 2026-06-07 |
-| `feature/tenant-isolation-opportunities` | 🔵 En PR | Bloque D incremento 4: dominio Opportunities migrado (repo extiende la base; allowlist 5→3). Apilada sobre la rama de Consents. | 2026-06-07 |
-| `feature/tenant-isolation-bots` | 🔵 En PR | Bloque D incremento 5 (CIERRE): dominio Bots migrado (`BotManager` extiende la base); **allowlist VACÍA → guard total**. Apilada sobre la rama de Opportunities. | 2026-06-07 |
+| `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening + **Bloque D completo (aislamiento fail-closed, guard total)** | 2026-06-08 |
+
+> **Bloque D mergeado y cerrado en `main`** (incs 3, 4, 5 vía merges `--no-ff`). Las ramas `feature/tenant-isolation-consents`, `feature/tenant-isolation-opportunities` y `feature/tenant-isolation-bots` se integraron y se borraron (local + remoto). `main` sincronizado con `origin/main`.
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
-> `main` y sus capas previas están sincronizadas con `origin/main`. El incremento 3 (Consents) viaja por PR, no por merge local.
+> `main` está sincronizado con `origin/main` (todo el Bloque D mergeado).
 
 ---
 
@@ -42,9 +41,9 @@
 | Transporte web SSE→Full (Bloque A) + spec §A.3 | v9 (sin cambio de schema) | ✅ |
 | WhatsApp hardening (Bloque B): recibos de estado, clasificación de errores Graph, ventana 24h, templates, channel_deliveries | v10 | ✅ |
 | Aislamiento de tenant fail-closed (Bloque D, incrementos 1+2): `Persistence\TenantScopedRepository` + guard estático + dominio Leads migrado a repo | v10 (sin cambio de schema) | ✅ |
-| Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
-| Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
-| Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
+| Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en `main`) |
+| Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en `main`) |
+| Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en `main`) |
 
 ---
 

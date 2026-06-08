@@ -98,4 +98,21 @@ final class OpportunityControllerTest extends TestCase {
         $this->assertSame( 201, $resp->get_status() );
         $this->assertSame( 99, $resp->get_data()['id'] );
     }
+
+    public function test_store_returns_500_when_create_fails(): void {
+        $repo = $this->createMock( OpportunityRepository::class );
+        $repo->method( 'getLeadSnapshotForTenant' )->willReturn( [
+            'score'  => OpportunityService::QUALIFIED_THRESHOLD,
+            'bot_id' => 5,
+        ] );
+        $repo->method( 'getActiveByLead' )->willReturn( null );
+        $repo->method( 'create' )->willReturn( 0 );
+        $repo->expects( $this->never() )->method( 'getById' );
+
+        $ctrl = new OpportunityController( $this->createMock( OpportunityService::class ), $repo, $this->tenantManager() );
+        $resp = $ctrl->store( $this->request( [ 'lead_id' => 7 ] ) );
+
+        $this->assertInstanceOf( \WP_Error::class, $resp );
+        $this->assertSame( 500, $resp->get_error_data()['status'] );
+    }
 }

@@ -6,6 +6,7 @@
 > Capas vivas: Conversation + Lead (v7) + Opportunity (v8) + Automation (v8) + Canales sociales (v9, WhatsApp/Telegram) + WhatsApp hardening (v10).
 > Transporte web: pipeline transport-agnostic (`ChatPipeline` + `OutputSink`) con entrega SSE y fallback `?mode=full` (Bloque A).
 > WhatsApp grado producción (Bloque B, v10): recibos de estado (`channel_deliveries` + wamid), clasificación de errores Graph (transitorio/permanente), ventana de 24h (`WindowChecker`), templates (`channel_templates` + `sendTemplate`).
+> Aislamiento de tenant fail-closed (Bloque D, incrementos 1+2): capa `Persistence\TenantScopedRepository` (`guardScope()` lanza si el scope ≤ 0) + guard estático en CI (`NoRawSqlOutsidePersistenceTest`) que bloquea SQL crudo fuera de la capa de persistencia. Dominio Leads ya migrado (Controller/Dashboard/Service sin `$wpdb`); el resto (Consents/Opportunities/Bots) sigue en la allowlist legacy hasta su migración.
 
 ---
 

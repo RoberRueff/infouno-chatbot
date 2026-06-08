@@ -23,6 +23,7 @@
 | `main` | ✅ Estable | Branch principal — **v11**: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening + Bloque D (guard total) + **MercadoPago Suscripciones premium** | 2026-06-08 |
 
 > **Bloque D** (incs 3-5) y **MercadoPago Suscripciones** (v11) mergeados y cerrados en `main` vía merges `--no-ff`. Sus ramas (`feature/tenant-isolation-*`, `feature/mercadopago-subscriptions`) se integraron y se borraron (local + remoto). `main` sincronizado con `origin/main`.
+> `feature/tenant-billing-panel` (panel de suscripción del tenant) **en PR**, off `main`.
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
 > `main` está sincronizado con `origin/main` (todo el Bloque D mergeado).
@@ -45,6 +46,7 @@
 | Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en `main`) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en `main`) |
 | MercadoPago Suscripciones premium: webhook firmado (HMAC + anti-replay) + fetch autoritativo (Enfoque A), `SubscriptionRepository` + `SubscriptionService` (máquina de estados), `BillingController` + 4 rutas REST, `BillingSettings` (WP Admin), `TenantManager::applyPlanChange` | v11 | ✅ (en `main`) |
+| Panel de billing del tenant: `Admin\TenantBillingPanel` (WP Admin, suscribir/cancelar premium) + `Billing\BillingServiceFactory` (wiring único, compartido con RestRouter) | v11 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
 
 ---
 

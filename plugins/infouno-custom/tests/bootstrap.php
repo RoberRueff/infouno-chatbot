@@ -191,6 +191,12 @@ if ( ! function_exists( 'update_option' ) ) {
     }
 }
 
+if ( ! function_exists( 'home_url' ) ) {
+    function home_url( string $path = '' ): string {
+        return 'https://example.test' . $path;
+    }
+}
+
 if ( ! function_exists( 'dbDelta' ) ) {
     /** Stub de dbDelta para tests: captura el SQL en vez de tocar la BD. */
     function dbDelta( string $sql ): array {

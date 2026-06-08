@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Infouno\SaaS\Tests\Unit\Channel;
 
 use Infouno\SaaS\Channel\ChannelConsentService;
+use Infouno\SaaS\Persistence\ConsentRepository;
 use PHPUnit\Framework\TestCase;
 
 final class ChannelConsentServiceTest extends TestCase {
@@ -16,7 +17,7 @@ final class ChannelConsentServiceTest extends TestCase {
             $inserts[] = $table;
         };
 
-        $svc          = new ChannelConsentService();
+        $svc          = new ChannelConsentService( new ConsentRepository() );
         $isFirst      = $svc->ensure( 3, 7, 'telegram', 'tg:55' );
 
         $this->assertTrue( $isFirst );
@@ -32,7 +33,7 @@ final class ChannelConsentServiceTest extends TestCase {
             $inserts[] = $table;
         };
 
-        $svc = new ChannelConsentService();
+        $svc = new ChannelConsentService( new ConsentRepository() );
 
         $this->assertFalse( $svc->ensure( 3, 7, 'telegram', 'tg:55' ) );
         $this->assertSame( [], $inserts );

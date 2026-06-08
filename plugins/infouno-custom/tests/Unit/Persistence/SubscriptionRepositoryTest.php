@@ -68,9 +68,21 @@ final class SubscriptionRepositoryTest extends TestCase {
         ( new SubscriptionRepository() )->markAuthorized( 0, 'pa-1', 1, null );
     }
 
+    public function test_markCancelled_sets_status_scoped_by_tenant(): void {
+        ( new SubscriptionRepository() )->markCancelled( 3, 'pa-1', 1700000000 );
+        $this->assertSame( 'cancelled', $GLOBALS['wpdb']->last_update_data['status'] );
+        $this->assertSame( [ 'tenant_id' => 3, 'mp_preapproval_id' => 'pa-1' ], $GLOBALS['wpdb']->last_update_where );
+    }
+
     public function test_markCancelled_fails_closed_on_zero(): void {
         $this->expectException( MissingTenantScopeException::class );
         ( new SubscriptionRepository() )->markCancelled( 0, 'pa-1', 1 );
+    }
+
+    public function test_updateNextPayment_updates_scoped_by_tenant(): void {
+        ( new SubscriptionRepository() )->updateNextPayment( 3, 'pa-1', 1700000000, '2026-08-08 00:00:00' );
+        $this->assertSame( '2026-08-08 00:00:00', $GLOBALS['wpdb']->last_update_data['next_payment_at'] );
+        $this->assertSame( [ 'tenant_id' => 3, 'mp_preapproval_id' => 'pa-1' ], $GLOBALS['wpdb']->last_update_where );
     }
 
     public function test_updateNextPayment_fails_closed_on_zero(): void {

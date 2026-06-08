@@ -39,15 +39,17 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
      * Increment 5 (Bots): se eliminan BotController, BotDashboard, BotWizard → allowlist vacía.
      */
     private const ALLOWLIST = [
-        // 'API/ConsentController.php',     ← migrado en Increment 3 (Bloque D)
-        // 'API/LeadController.php',        ← migrado en Increment 2 (Bloque D)
-        // 'API/OpportunityController.php', ← migrado en Increment 4 (Bloque D)
-        'API/BotController.php',
-        // 'Admin/LeadDashboard.php',       ← migrado en Increment 2 (Bloque D)
-        // 'Admin/OpportunityDashboard.php',← migrado en Increment 4 (Bloque D)
-        'Admin/BotDashboard.php',
-        'Admin/BotWizard.php',
-        // 'Lead/LeadService.php',          ← migrado en Increment 2 (Bloque D)
+        // ── Bloque D COMPLETO: allowlist vacía → guard total ──
+        // Todo el SQL vive en la capa de persistencia (repos + managers autorizados).
+        // 'API/ConsentController.php',         ← migrado en Increment 3 (Bloque D)
+        // 'API/LeadController.php',            ← migrado en Increment 2 (Bloque D)
+        // 'API/OpportunityController.php',     ← migrado en Increment 4 (Bloque D)
+        // 'API/BotController.php',             ← migrado en Increment 5 (Bloque D)
+        // 'Admin/LeadDashboard.php',           ← migrado en Increment 2 (Bloque D)
+        // 'Admin/OpportunityDashboard.php',    ← migrado en Increment 4 (Bloque D)
+        // 'Admin/BotDashboard.php',            ← migrado en Increment 5 (Bloque D)
+        // 'Admin/BotWizard.php',               ← migrado en Increment 5 (Bloque D)
+        // 'Lead/LeadService.php',              ← migrado en Increment 2 (Bloque D)
         // 'Channel/ChannelConsentService.php', ← migrado en Increment 3 (Bloque D)
     ];
 
@@ -154,16 +156,28 @@ final class NoRawSqlOutsidePersistenceTest extends TestCase {
     }
 
     /**
-     * Self-test: un archivo en la allowlist con $wpdb-> NO se marca como violación.
+     * Self-test de la lógica de exclusión: un archivo presente en una allowlist
+     * NO se marca como violación. Usa una allowlist sintética porque la real ya
+     * está vacía (Bloque D completo) — la lógica del guard sigue siendo válida.
      */
-    public function test_scanner_allows_allowlisted_files(): void {
-        $fakeContent = '<?php $wpdb->get_results("SELECT * FROM wp_bots");';
-        $fakeRel     = 'API/BotController.php'; // sí está en ALLOWLIST (legacy aún no migrado)
+    public function test_scanner_exclusion_logic_skips_allowlisted_files(): void {
+        $syntheticAllowlist = [ 'API/LegacyController.php' ];
+        $fakeContent = '<?php $wpdb->get_results("SELECT 1");';
+        $fakeRel     = 'API/LegacyController.php';
 
         $hasToken    = str_contains( $fakeContent, self::SQL_TOKEN );
-        $allowListed = in_array( $fakeRel, self::ALLOWLIST, true );
+        $allowListed = in_array( $fakeRel, $syntheticAllowlist, true );
 
         $wouldFail = $hasToken && ! $allowListed;
         $this->assertFalse( $wouldFail, 'Un archivo en la allowlist no debe marcarse como violación.' );
+    }
+
+    /**
+     * Hito Bloque D: la ALLOWLIST quedó vacía → guard total. Ningún archivo de
+     * API/Admin/servicios puede contener SQL crudo. Si alguien re-agrega una
+     * entrada a la allowlist, este test lo detecta.
+     */
+    public function test_allowlist_is_empty_guard_is_total(): void {
+        $this->assertSame( [], self::ALLOWLIST, 'Bloque D completo: la allowlist debe estar vacía.' );
     }
 }

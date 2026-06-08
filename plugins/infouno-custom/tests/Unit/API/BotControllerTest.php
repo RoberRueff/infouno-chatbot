@@ -64,4 +64,16 @@ final class BotControllerTest extends TestCase {
         $this->assertFalse( $resp->get_data()['saved'] );
         $this->assertArrayHasKey( 'system_prompt', $resp->get_data() );
     }
+
+    public function test_wizard_with_invalid_data_returns_422_and_does_not_persist(): void {
+        $bm = $this->botManagerReturningBot();
+        $bm->expects( $this->never() )->method( 'saveWizardResult' );
+
+        $ctrl = new BotController( $bm, $this->tenantManager() );
+        // wizard_data vacío → PromptBuilder::validate() devuelve errores → 422.
+        $resp = $ctrl->wizard( $this->request( [ 'wizard_data' => [], 'save' => true ] ) );
+
+        $this->assertInstanceOf( \WP_Error::class, $resp );
+        $this->assertSame( 422, $resp->get_error_data()['status'] );
+    }
 }

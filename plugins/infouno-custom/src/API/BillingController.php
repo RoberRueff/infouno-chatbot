@@ -59,7 +59,9 @@ final class BillingController {
             if ( 'already_subscribed' === $e->getMessage() ) {
                 return new \WP_Error( 'already_subscribed', 'Ya tenés una suscripción activa.', [ 'status' => 409 ] );
             }
-            return new \WP_Error( 'subscribe_failed', $e->getMessage(), [ 'status' => 500 ] );
+            // No exponer el detalle interno al cliente; se loguea para diagnóstico.
+            error_log( '[INFOUNO] subscribe error: ' . $e->getMessage() );
+            return new \WP_Error( 'subscribe_failed', 'No se pudo iniciar la suscripción.', [ 'status' => 500 ] );
         }
 
         return new \WP_REST_Response( [ 'init_point' => $initPoint ], 200 );

@@ -81,4 +81,49 @@ final class BillingControllerTest extends TestCase {
 
         $this->assertSame( 200, $resp->get_status() );
     }
+
+    public function test_subscription_returns_plan_and_status(): void {
+        $tm = $this->createMock( TenantManager::class );
+        $tm->method( 'requireForCurrentUser' )->willReturn( [ 'id' => 3, 'plan' => 'premium', 'status' => 'active' ] );
+        $repo = $this->createMock( SubscriptionRepository::class );
+        $repo->method( 'findActiveForTenant' )->willReturn( [ 'status' => 'authorized', 'next_payment_at' => '2026-07-08 00:00:00' ] );
+
+        $ctrl = $this->ctrl( $tm, $this->createMock( SubscriptionService::class ), $this->createMock( WebhookSignatureVerifier::class ), $repo );
+        $resp = $ctrl->subscription( $this->request() );
+
+        $this->assertSame( 200, $resp->get_status() );
+        $data = $resp->get_data();
+        $this->assertSame( 'premium', $data['plan'] );
+        $this->assertSame( 'authorized', $data['subscription']['status'] );
+    }
+
+    public function test_cancel_404_when_no_subscription(): void {
+        $tm = $this->createMock( TenantManager::class );
+        $tm->method( 'requireForCurrentUser' )->willReturn( [ 'id' => 3 ] );
+        $repo = $this->createMock( SubscriptionRepository::class );
+        $repo->method( 'findActiveForTenant' )->willReturn( null );
+        $svc = $this->createMock( SubscriptionService::class );
+        $svc->expects( $this->never() )->method( 'cancelSubscription' );
+
+        $ctrl = $this->ctrl( $tm, $svc, $this->createMock( WebhookSignatureVerifier::class ), $repo );
+        $resp = $ctrl->cancel( $this->request() );
+
+        $this->assertInstanceOf( \WP_Error::class, $resp );
+        $this->assertSame( 404, $resp->get_error_data()['status'] );
+    }
+
+    public function test_cancel_invokes_service_when_subscription_exists(): void {
+        $tm = $this->createMock( TenantManager::class );
+        $tm->method( 'requireForCurrentUser' )->willReturn( [ 'id' => 3 ] );
+        $repo = $this->createMock( SubscriptionRepository::class );
+        $repo->method( 'findActiveForTenant' )->willReturn( [ 'mp_preapproval_id' => 'pa-1' ] );
+        $svc = $this->createMock( SubscriptionService::class );
+        $svc->expects( $this->once() )->method( 'cancelSubscription' )->with( 'pa-1' );
+
+        $ctrl = $this->ctrl( $tm, $svc, $this->createMock( WebhookSignatureVerifier::class ), $repo );
+        $resp = $ctrl->cancel( $this->request() );
+
+        $this->assertSame( 200, $resp->get_status() );
+        $this->assertTrue( $resp->get_data()['cancelled'] );
+    }
 }

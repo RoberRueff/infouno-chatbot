@@ -10,7 +10,7 @@
 | Campo | Valor |
 |-------|-------|
 | Branch principal | `main` |
-| DB Version activa | `v10` |
+| DB Version activa | `v11` |
 | Fase de producto | **Fase 2 en curso** (Opportunity + Automation + Canales + transporte web + WhatsApp hardening) |
 | Última actualización | 2026-06-08 |
 
@@ -21,6 +21,7 @@
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
 | `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening + **Bloque D completo (aislamiento fail-closed, guard total)** | 2026-06-08 |
+| `feature/mercadopago-subscriptions` | 🔵 En PR | **MercadoPago Suscripciones premium** (v11): webhook firmado + fetch autoritativo (Enfoque A), máquina de estados premium, settings WP Admin. Off `main`. | 2026-06-08 |
 
 > **Bloque D mergeado y cerrado en `main`** (incs 3, 4, 5 vía merges `--no-ff`). Las ramas `feature/tenant-isolation-consents`, `feature/tenant-isolation-opportunities` y `feature/tenant-isolation-bots` se integraron y se borraron (local + remoto). `main` sincronizado con `origin/main`.
 
@@ -44,6 +45,7 @@
 | Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en `main`) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en `main`) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en `main`) |
+| MercadoPago Suscripciones premium: webhook firmado (HMAC + anti-replay) + fetch autoritativo (Enfoque A), `SubscriptionRepository` + `SubscriptionService` (máquina de estados), `BillingController` + 4 rutas REST, `BillingSettings` (WP Admin), `TenantManager::applyPlanChange` | v11 | ✅ (en PR, pendiente merge) |
 
 ---
 
@@ -51,7 +53,6 @@
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |
 | — | feature | 🟢 Baja | Mensajería proactiva con templates (infra Bloque B lista; disparo llega con Sales Automation) |
@@ -84,6 +85,7 @@ docs/[area]-[descripcion]                  → solo documentación
 | v8 | wp_infouno_opportunities + wp_infouno_automation_logs (Opportunity Engine + Sales Automation) |
 | v9 | wp_infouno_channels + wp_infouno_channel_events + columnas channel/external_user en conversations y channel en consents (Canales sociales) |
 | v10 | wp_infouno_channel_templates + wp_infouno_channel_deliveries (Bloque B WhatsApp hardening) |
+| v11 | wp_infouno_subscriptions + wp_infouno_payment_events (MercadoPago Suscripciones premium) |
 
 ---
 

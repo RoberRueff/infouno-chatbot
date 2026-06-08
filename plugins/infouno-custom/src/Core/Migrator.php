@@ -744,7 +744,7 @@ final class Migrator {
             next_payment_at   DATETIME        NULL,
             last_event_ts     BIGINT UNSIGNED NOT NULL DEFAULT 0,
             created_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
             UNIQUE KEY uq_preapproval (mp_preapproval_id),
             KEY tenant (tenant_id),

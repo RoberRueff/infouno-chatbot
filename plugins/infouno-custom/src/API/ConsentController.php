@@ -124,7 +124,7 @@ final class ConsentController {
         $botId    = (int) $bot['id'];
         $tenantId = (int) $bot['tenant_id'];
         $hashes   = $this->buildHashes( $sessionId );
-        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
+        $version  = $this->consentVersion();
 
         if ( $this->consentRepo->consentExistsByBot( $botId, $hashes['session'], 'chat' ) ) {
             return new \WP_REST_Response( [ 'recorded' => false, 'reason' => 'already_consented' ], 200 );
@@ -169,7 +169,7 @@ final class ConsentController {
 
         $botId    = (int) $bot['id'];
         $tenantId = (int) $bot['tenant_id'];
-        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
+        $version  = $this->consentVersion();
         $hashes   = $this->buildHashes( $sessionId );
 
         if ( $this->consentRepo->leadConsentExists( $botId, $hashes['session'] ) ) {
@@ -238,7 +238,7 @@ final class ConsentController {
         $botId    = (int) $bot['id'];
         $tenantId = (int) $bot['tenant_id'];
         $hashes   = $this->buildHashes( $sessionId );
-        $version  = defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
+        $version  = $this->consentVersion();
 
         // 1. Anonimizar mensajes y conversaciones.
         $messagesProcessed = $this->conversationRepo->deleteSession( $sessionId, $tenantId );
@@ -277,6 +277,14 @@ final class ConsentController {
             ],
             200
         );
+    }
+
+    /**
+     * Versión del texto de consentimiento vigente — evidencia legal de qué aceptó el usuario.
+     * Cae a '1.0' si la constante no está definida (entornos sin configuración explícita).
+     */
+    private function consentVersion(): string {
+        return defined( 'INFOUNO_CONSENT_VERSION' ) ? INFOUNO_CONSENT_VERSION : '1.0';
     }
 
     /**

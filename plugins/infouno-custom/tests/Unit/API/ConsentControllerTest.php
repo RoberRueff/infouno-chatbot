@@ -117,4 +117,48 @@ final class ConsentControllerTest extends TestCase {
         $this->assertTrue( $resp->get_data()['revoked'] );
         $this->assertSame( 4, $resp->get_data()['messages_processed'] );
     }
+
+    public function test_recordLead_returns_already_consented_when_lead_consent_exists(): void {
+        $botMgr = $this->createMock( BotManager::class );
+        $botMgr->method( 'getByPublicToken' )->willReturn( $this->bot() );
+        $botMgr->method( 'validateOrigin' )->willReturn( true );
+
+        $repo = $this->createMock( ConsentRepository::class );
+        $repo->method( 'leadConsentExists' )->willReturn( true );
+        $repo->expects( $this->never() )->method( 'recordLeadConsentRow' );
+        $repo->expects( $this->never() )->method( 'recordConsentRow' );
+
+        $ctrl = new ConsentController( $botMgr, $this->createMock( ConversationRepository::class ), $repo );
+        $resp = $ctrl->recordLead( $this->makeRequest( [
+            'bot_token'  => str_repeat( 'a', 64 ),
+            'session_id' => 'session1',
+            'scopes'     => [ 'name' => true, 'phone' => false, 'email' => true ],
+        ] ) );
+
+        $this->assertSame( 200, $resp->get_status() );
+        $this->assertFalse( $resp->get_data()['recorded'] );
+    }
+
+    public function test_recordLead_skips_audit_insert_when_lead_capture_evidence_exists(): void {
+        $botMgr = $this->createMock( BotManager::class );
+        $botMgr->method( 'getByPublicToken' )->willReturn( $this->bot() );
+        $botMgr->method( 'validateOrigin' )->willReturn( true );
+
+        $repo = $this->createMock( ConsentRepository::class );
+        $repo->method( 'leadConsentExists' )->willReturn( false );
+        // Ya existe evidencia scope='lead_capture' → el INSERT de auditoría se omite.
+        $repo->method( 'consentExistsByBot' )->willReturn( true );
+        $repo->expects( $this->once() )->method( 'recordLeadConsentRow' );
+        $repo->expects( $this->never() )->method( 'recordConsentRow' );
+
+        $ctrl = new ConsentController( $botMgr, $this->createMock( ConversationRepository::class ), $repo );
+        $resp = $ctrl->recordLead( $this->makeRequest( [
+            'bot_token'  => str_repeat( 'a', 64 ),
+            'session_id' => 'session1',
+            'scopes'     => [ 'name' => true, 'phone' => false, 'email' => true ],
+        ] ) );
+
+        $this->assertSame( 201, $resp->get_status() );
+        $this->assertTrue( $resp->get_data()['recorded'] );
+    }
 }

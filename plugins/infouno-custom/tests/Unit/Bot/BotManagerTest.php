@@ -83,4 +83,43 @@ final class BotManagerTest extends TestCase {
         ( new BotManager() )->delete( 9, 3 );
         $this->assertSame( [ 'id' => 9, 'tenant_id' => 3 ], $GLOBALS['wpdb']->last_delete_where );
     }
+
+    // ── comportamiento de los métodos mutadores (create / update settings) ─
+
+    public function test_create_stamps_tenant_and_merges_settings_over_defaults(): void {
+        $captured = null;
+        $GLOBALS['wpdb']->onInsert = function ( string $table, array $data ) use ( &$captured ) {
+            $captured = [ 'table' => $table, 'data' => $data ];
+        };
+        $GLOBALS['wpdb']->insert_id = 55;
+
+        $id = ( new BotManager() )->create( 3, [
+            'bot_name' => 'Acme',
+            'settings' => [ 'temperature' => 0.2 ],
+        ] );
+
+        $this->assertSame( 55, $id );
+        $this->assertSame( 'wp_infouno_bots', $captured['table'] );
+        $this->assertSame( 3, $captured['data']['tenant_id'] );
+        $this->assertSame( 1, $captured['data']['is_active'] );
+
+        $settings = json_decode( $captured['data']['settings'], true );
+        $this->assertSame( 0.2, $settings['temperature'] );      // override aplicado
+        $this->assertSame( 1024, $settings['max_tokens'] );      // default preservado
+    }
+
+    public function test_update_settings_merge_preserves_unspecified_keys(): void {
+        // El bot existente tiene temperature=0.7 y max_tokens=2048.
+        $GLOBALS['wpdb']->stub_get_row = [
+            'id'        => 9,
+            'tenant_id' => 3,
+            'settings'  => json_encode( [ 'temperature' => 0.7, 'max_tokens' => 2048 ] ),
+        ];
+
+        ( new BotManager() )->update( 9, 3, [ 'settings' => [ 'temperature' => 0.2 ] ] );
+
+        $settings = json_decode( $GLOBALS['wpdb']->last_update_data['settings'], true );
+        $this->assertSame( 0.2, $settings['temperature'] );   // override aplicado
+        $this->assertSame( 2048, $settings['max_tokens'] );   // valor previo preservado
+    }
 }

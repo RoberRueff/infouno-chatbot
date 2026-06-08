@@ -82,20 +82,12 @@ final class BotWizard {
 
         $generatedPrompt = PromptBuilder::fromWizardData( $data );
 
-        // Guardar wizard_data y el prompt generado en el bot
-        global $wpdb;
-        $wpdb->update(
-            $wpdb->prefix . 'infouno_bots',
-            [
-                'system_prompt' => $generatedPrompt,
-                'wizard_data'   => wp_json_encode( $data ),
-            ],
-            [
-                'id'        => $botId,
-                'tenant_id' => (int) $tenant['id'],
-            ],
-            [ '%s', '%s' ],
-            [ '%d', '%d' ]
+        // Guardar wizard_data y el prompt generado en el bot (vía manager — SQL-free).
+        $this->botManager->saveWizardResult(
+            $botId,
+            (int) $tenant['id'],
+            $generatedPrompt,
+            $data,
         );
 
         $query = http_build_query( [

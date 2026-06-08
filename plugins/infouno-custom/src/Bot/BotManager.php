@@ -4,11 +4,23 @@ declare(strict_types=1);
 
 namespace Infouno\SaaS\Bot;
 
+use Infouno\SaaS\Persistence\TenantScopedRepository;
+
 /**
  * CRUD de bots con scope estricto por tenant_id.
  * Toda lectura/escritura incluye WHERE tenant_id — guardrail de aislamiento.
+ *
+ * Extiende TenantScopedRepository: usa $this->db (wpdb inyectado por el ctor base)
+ * y exige un scope positivo via guardScope($tenantId) como primera línea de cada
+ * método tenant-scoped — fail-closed.
+ *
+ * Excepción: getByPublicToken() NO lleva guardScope. Es el punto de entrada del
+ * widget público: resuelve el tenant a partir del token público, por lo que no
+ * recibe un tenantId con el que validar el scope.
+ *
+ * Scope key: tenant_id.
  */
-final class BotManager {
+final class BotManager extends TenantScopedRepository {
 
     /**
      * Máximo de bots por plan.
@@ -50,14 +62,18 @@ final class BotManager {
         'webhook_url'      => '',
     ];
 
-    public function create( int $tenantId, array $data ): int {
-        global $wpdb;
+    protected function table(): string {
+        return $this->db->prefix . 'infouno_bots';
+    }
 
-        $table  = $wpdb->prefix . 'infouno_bots';
+    public function create( int $tenantId, array $data ): int {
+        $this->guardScope( $tenantId );
+
+        $table  = $this->table();
         $token  = $this->generatePublicToken();
         $merged = array_merge( self::DEFAULT_SETTINGS, $data['settings'] ?? [] );
 
-        $inserted = $wpdb->insert(
+        $inserted = $this->db->insert(
             $table,
             [
                 'tenant_id'      => $tenantId,
@@ -77,16 +93,16 @@ final class BotManager {
             throw new \RuntimeException( 'No se pudo crear el bot.', 500 );
         }
 
-        return (int) $wpdb->insert_id;
+        return (int) $this->db->insert_id;
     }
 
     /** Retorna la cantidad de bots activos del tenant — query ligera sin cargar datos. */
     public function countForTenant( int $tenantId ): int {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_bots';
-        return (int) $wpdb->get_var(
-            $wpdb->prepare(
+        $table = $this->table();
+        return (int) $this->db->get_var(
+            $this->db->prepare(
                 "SELECT COUNT(*) FROM `{$table}` WHERE tenant_id = %d",
                 $tenantId
             )
@@ -95,11 +111,11 @@ final class BotManager {
 
     /** Siempre filtra por tenant_id para cumplir el guardrail de aislamiento. */
     public function getById( int $botId, int $tenantId ): ?array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_bots';
-        $row   = $wpdb->get_row(
-            $wpdb->prepare(
+        $table = $this->table();
+        $row   = $this->db->get_row(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}` WHERE id = %d AND tenant_id = %d LIMIT 1",
                 $botId,
                 $tenantId
@@ -111,11 +127,11 @@ final class BotManager {
     }
 
     public function getAllForTenant( int $tenantId ): array {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table = $wpdb->prefix . 'infouno_bots';
-        $rows  = $wpdb->get_results(
-            $wpdb->prepare(
+        $table = $this->table();
+        $rows  = $this->db->get_results(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}` WHERE tenant_id = %d ORDER BY created_at DESC",
                 $tenantId
             ),
@@ -126,9 +142,9 @@ final class BotManager {
     }
 
     public function update( int $botId, int $tenantId, array $data ): bool {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table  = $wpdb->prefix . 'infouno_bots';
+        $table  = $this->table();
         $fields = [];
         $types  = [];
 
@@ -170,7 +186,7 @@ final class BotManager {
             return false;
         }
 
-        $updated = $wpdb->update(
+        $updated = $this->db->update(
             $table,
             $fields,
             [ 'id' => $botId, 'tenant_id' => $tenantId ],
@@ -182,10 +198,10 @@ final class BotManager {
     }
 
     public function delete( int $botId, int $tenantId ): bool {
-        global $wpdb;
+        $this->guardScope( $tenantId );
 
-        $table   = $wpdb->prefix . 'infouno_bots';
-        $deleted = $wpdb->delete(
+        $table   = $this->table();
+        $deleted = $this->db->delete(
             $table,
             [ 'id' => $botId, 'tenant_id' => $tenantId ],
             [ '%d', '%d' ]
@@ -199,11 +215,9 @@ final class BotManager {
      * No requiere tenant_id porque el token identifica unívocamente al bot.
      */
     public function getByPublicToken( string $token ): ?array {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'infouno_bots';
-        $row   = $wpdb->get_row(
-            $wpdb->prepare(
+        $table = $this->table();
+        $row   = $this->db->get_row(
+            $this->db->prepare(
                 "SELECT * FROM `{$table}` WHERE public_token = %s AND is_active = 1 LIMIT 1",
                 $token
             ),
@@ -238,6 +252,69 @@ final class BotManager {
         );
 
         return in_array( $normalizedOrigin, $allowed, true );
+    }
+
+    /**
+     * Guarda el resultado del wizard (system_prompt + wizard_data) de un bot.
+     * Absorbe el UPDATE duplicado en BotController::wizard y BotWizard. Scope key: tenant_id.
+     *
+     * @param array<string,mixed> $wizardData
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function saveWizardResult( int $botId, int $tenantId, string $systemPrompt, array $wizardData ): bool {
+        $this->guardScope( $tenantId );
+
+        $updated = $this->db->update(
+            $this->table(),
+            [
+                'system_prompt' => $systemPrompt,
+                'wizard_data'   => wp_json_encode( $wizardData ),
+            ],
+            [ 'id' => $botId, 'tenant_id' => $tenantId ],
+            [ '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        return $updated !== false;
+    }
+
+    /**
+     * Cuenta leads agrupados por bot para un conjunto de bots del tenant (una sola query).
+     * Absorbe el GROUP BY de BotDashboard. Devuelve [bot_id => total]. Scope key: tenant_id.
+     *
+     * @param array<int> $botIds
+     * @return array<int,int>
+     * @throws \Infouno\SaaS\Persistence\MissingTenantScopeException
+     */
+    public function leadCountsForBots( array $botIds, int $tenantId ): array {
+        $this->guardScope( $tenantId );
+
+        $botIds = array_values( array_map( 'intval', $botIds ) );
+        if ( ! $botIds ) {
+            return [];
+        }
+
+        $leadsTable   = $this->db->prefix . 'infouno_leads';
+        $placeholders = implode( ',', array_fill( 0, count( $botIds ), '%d' ) );
+
+        // phpcs:ignore WordPress.DB.PreparedSQL, WordPress.DB.PreparedSQLPlaceholders
+        $rows = $this->db->get_results(
+            $this->db->prepare(
+                "SELECT bot_id, COUNT(*) AS total
+                 FROM `{$leadsTable}`
+                 WHERE bot_id IN ({$placeholders}) AND tenant_id = %d
+                 GROUP BY bot_id",
+                ...array_merge( $botIds, [ $tenantId ] )
+            ),
+            ARRAY_A
+        );
+
+        $counts = [];
+        foreach ( $rows ?: [] as $row ) {
+            $counts[ (int) $row['bot_id'] ] = (int) $row['total'];
+        }
+
+        return $counts;
     }
 
     /** Decodifica la columna JSON de settings con fallback al esquema por defecto. */

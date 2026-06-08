@@ -129,6 +129,14 @@ class WpdbStub extends \wpdb {
         return 1;
     }
 
+    /** @var array<string,mixed> Cláusula WHERE del último delete() — clave para verificar aislamiento por tenant. */
+    public array $last_delete_where = [];
+
+    public function delete( string $table, array $where, array $whereFormats = [] ): int|false {
+        $this->last_delete_where = $where;
+        return 1;
+    }
+
     public mixed  $stub_query_result = 0;
     public string $last_query        = '';
     /** Stores the last SQL sent via query() (write path). */
@@ -196,7 +204,10 @@ if ( ! isset( $GLOBALS['__infouno_dbdelta_sql'] ) ) {
 }
 
 if ( ! class_exists( 'WP_REST_Request' ) ) {
-    class WP_REST_Request {
+    // ArrayAccess: el código de producción lee params via $request['id'] además
+    // de get_param(). Sin esto los tests de controllers que usan $request['id']
+    // fallan con "Cannot use object of type WP_REST_Request as array".
+    class WP_REST_Request implements \ArrayAccess {
         private array $headers = [];
         private array $params  = [];
         private string $body   = '';
@@ -223,6 +234,31 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
             $decoded = json_decode( '' !== $this->body ? $this->body : '{}', true );
             return is_array( $decoded ) ? $decoded : [];
         }
+
+        public function offsetExists( mixed $offset ): bool {
+            return isset( $this->params[ $offset ] );
+        }
+        public function offsetGet( mixed $offset ): mixed {
+            return $this->params[ $offset ] ?? null;
+        }
+        public function offsetSet( mixed $offset, mixed $value ): void {
+            $this->params[ $offset ] = $value;
+        }
+        public function offsetUnset( mixed $offset ): void {
+            unset( $this->params[ $offset ] );
+        }
+    }
+}
+
+if ( ! function_exists( 'is_wp_error' ) ) {
+    function is_wp_error( mixed $thing ): bool {
+        return $thing instanceof \WP_Error;
+    }
+}
+
+if ( ! function_exists( 'is_user_logged_in' ) ) {
+    function is_user_logged_in(): bool {
+        return $GLOBALS['__infouno_user_logged_in'] ?? true;
     }
 }
 

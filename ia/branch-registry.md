@@ -23,6 +23,7 @@
 | `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening | 2026-06-07 |
 | `feature/tenant-isolation-consents` | 🔵 En PR | Bloque D incremento 3: dominio Consents migrado a `ConsentRepository` (pusheada a origin, PR abierto contra `main`) | 2026-06-07 |
 | `feature/tenant-isolation-opportunities` | 🔵 En PR | Bloque D incremento 4: dominio Opportunities migrado (repo extiende la base; allowlist 5→3). Apilada sobre la rama de Consents. | 2026-06-07 |
+| `feature/tenant-isolation-bots` | 🔵 En PR | Bloque D incremento 5 (CIERRE): dominio Bots migrado (`BotManager` extiende la base); **allowlist VACÍA → guard total**. Apilada sobre la rama de Opportunities. | 2026-06-07 |
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
 > `main` y sus capas previas están sincronizadas con `origin/main`. El incremento 3 (Consents) viaja por PR, no por merge local.
@@ -43,6 +44,7 @@
 | Aislamiento de tenant fail-closed (Bloque D, incrementos 1+2): `Persistence\TenantScopedRepository` + guard estático + dominio Leads migrado a repo | v10 (sin cambio de schema) | ✅ |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
+| Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
 
 ---
 
@@ -50,7 +52,6 @@
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/tenant-isolation-bots` | feature | 🔴 Alta | **Bloque D incremento 5**: migrar Bots (BotController/BotDashboard/BotWizard) a repo → allowlist del guard VACÍA (guard total). Consents (inc 3) y Opportunities (inc 4) ya migrados, en PR. |
 | `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |

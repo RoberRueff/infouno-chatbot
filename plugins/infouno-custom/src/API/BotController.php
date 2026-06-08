@@ -180,20 +180,11 @@ final class BotController {
 
         if ( $request->get_param( 'save' ) ) {
             $tenant = $this->tenantManager->getForCurrentUser();
-
-            global $wpdb;
-            $wpdb->update(
-                $wpdb->prefix . 'infouno_bots',
-                [
-                    'system_prompt' => $generatedPrompt,
-                    'wizard_data'   => wp_json_encode( $wizardData ),
-                ],
-                [
-                    'id'        => (int) $bot['id'],
-                    'tenant_id' => (int) $tenant['id'],
-                ],
-                [ '%s', '%s' ],
-                [ '%d', '%d' ]
+            $this->botManager->saveWizardResult(
+                (int) $bot['id'],
+                (int) $tenant['id'],
+                $generatedPrompt,
+                $wizardData,
             );
         }
 

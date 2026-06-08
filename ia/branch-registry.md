@@ -20,10 +20,9 @@
 
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
-| `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening + **Bloque D completo (aislamiento fail-closed, guard total)** | 2026-06-08 |
-| `feature/mercadopago-subscriptions` | 🔵 En PR | **MercadoPago Suscripciones premium** (v11): webhook firmado + fetch autoritativo (Enfoque A), máquina de estados premium, settings WP Admin. Off `main`. | 2026-06-08 |
+| `main` | ✅ Estable | Branch principal — **v11**: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening + Bloque D (guard total) + **MercadoPago Suscripciones premium** | 2026-06-08 |
 
-> **Bloque D mergeado y cerrado en `main`** (incs 3, 4, 5 vía merges `--no-ff`). Las ramas `feature/tenant-isolation-consents`, `feature/tenant-isolation-opportunities` y `feature/tenant-isolation-bots` se integraron y se borraron (local + remoto). `main` sincronizado con `origin/main`.
+> **Bloque D** (incs 3-5) y **MercadoPago Suscripciones** (v11) mergeados y cerrados en `main` vía merges `--no-ff`. Sus ramas (`feature/tenant-isolation-*`, `feature/mercadopago-subscriptions`) se integraron y se borraron (local + remoto). `main` sincronizado con `origin/main`.
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
 > `main` está sincronizado con `origin/main` (todo el Bloque D mergeado).
@@ -45,7 +44,7 @@
 | Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en `main`) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 4): dominio Opportunities — `OpportunityRepository` extiende la base (guardScope en 9 métodos + 2 métodos nuevos); OpportunityController + OpportunityDashboard sin `$wpdb`; allowlist del guard 5→3 | v10 (sin cambio de schema) | ✅ (en `main`) |
 | Aislamiento de tenant fail-closed (Bloque D, incremento 5 — **CIERRE**): dominio Bots — `BotManager` extiende la base (guardScope; `getByPublicToken` sin scope) + saveWizardResult/leadCountsForBots; BotController/BotWizard/BotDashboard sin `$wpdb`; **allowlist del guard 3→0 (guard total)** | v10 (sin cambio de schema) | ✅ (en `main`) |
-| MercadoPago Suscripciones premium: webhook firmado (HMAC + anti-replay) + fetch autoritativo (Enfoque A), `SubscriptionRepository` + `SubscriptionService` (máquina de estados), `BillingController` + 4 rutas REST, `BillingSettings` (WP Admin), `TenantManager::applyPlanChange` | v11 | ✅ (en PR, pendiente merge) |
+| MercadoPago Suscripciones premium: webhook firmado (HMAC + anti-replay) + fetch autoritativo (Enfoque A), `SubscriptionRepository` + `SubscriptionService` (máquina de estados), `BillingController` + 4 rutas REST, `BillingSettings` (WP Admin), `TenantManager::applyPlanChange` | v11 | ✅ (en `main`) |
 
 ---
 

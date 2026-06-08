@@ -154,6 +154,8 @@ final class BotManagerTest extends TestCase {
 
     public function test_leadCountsForBots_returns_empty_for_no_bots(): void {
         $this->assertSame( [], ( new BotManager() )->leadCountsForBots( [], 3 ) );
+        // No debe ejecutar ninguna query cuando no hay bots.
+        $this->assertSame( '', $GLOBALS['wpdb']->last_query );
     }
 
     public function test_leadCountsForBots_fails_closed_on_zero_tenant(): void {

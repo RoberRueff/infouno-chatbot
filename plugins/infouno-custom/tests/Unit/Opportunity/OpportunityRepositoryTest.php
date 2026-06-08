@@ -190,6 +190,12 @@ final class OpportunityRepositoryTest extends TestCase {
         $this->assertStringContainsString( "o.stage = 'quoted'", $GLOBALS['wpdb']->last_query );
     }
 
+    public function test_listWithLeadData_defaults_limit_to_100(): void {
+        $GLOBALS['wpdb']->stub_get_results = [];
+        ( new OpportunityRepository() )->listWithLeadDataForTenant( 3 );
+        $this->assertStringContainsString( 'LIMIT 100', $GLOBALS['wpdb']->last_query );
+    }
+
     public function test_listWithLeadData_fails_closed_on_zero_tenant(): void {
         $this->expectException( MissingTenantScopeException::class );
         ( new OpportunityRepository() )->listWithLeadDataForTenant( 0, null );

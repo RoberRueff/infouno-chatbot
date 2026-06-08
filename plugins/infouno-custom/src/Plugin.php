@@ -34,6 +34,7 @@ use Infouno\SaaS\Lead\LeadService;
 use Infouno\SaaS\LLM\LLMRouter;
 use Infouno\SaaS\Opportunity\OpportunityRepository;
 use Infouno\SaaS\Opportunity\OpportunityService;
+use Infouno\SaaS\Persistence\ConsentRepository;
 use Infouno\SaaS\Security\CredentialVault;
 use Infouno\SaaS\Tenant\TenantManager;
 
@@ -142,7 +143,7 @@ final class Plugin {
             $this->inboundDispatcher = new InboundDispatcher(
                 $this->channelRegistry,
                 $this->channelRepository,
-                new ChannelConsentService(),
+                new ChannelConsentService( new ConsentRepository() ),
                 $pipeline,
                 $botLoader,
             );

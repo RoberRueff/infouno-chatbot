@@ -8,6 +8,7 @@ use Infouno\SaaS\Bot\BotManager;
 use Infouno\SaaS\Bot\QuotaService;
 use Infouno\SaaS\Chat\ChatService;
 use Infouno\SaaS\Chat\ConversationRepository;
+use Infouno\SaaS\Persistence\ConsentRepository;
 use Infouno\SaaS\Tenant\TenantManager;
 use Infouno\SaaS\API\ChannelWebhookController;
 use Infouno\SaaS\API\OpportunityController;
@@ -41,7 +42,7 @@ final class RestRouter {
         $this->botController            = new BotController( $this->botManager, $this->tenantManager );
         $this->chatController           = new ChatController( $this->chatService, $this->botManager );
         $this->sessionController        = new SessionController( $this->botManager, $this->conversationRepo );
-        $this->consentController        = new ConsentController( $this->botManager, $this->conversationRepo );
+        $this->consentController        = new ConsentController( $this->botManager, $this->conversationRepo, new ConsentRepository() );
         $this->leadController           = $leadController;
         $this->opportunityController    = $opportunityController;
         $this->channelWebhookController = $channelWebhookController;

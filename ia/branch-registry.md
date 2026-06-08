@@ -21,9 +21,10 @@
 | Branch | Estado | Propósito | Última actividad |
 |--------|--------|-----------|-----------------|
 | `main` | ✅ Estable | Branch principal — v10: Lead + Opportunity + Automation + Canales + transporte SSE→Full + WhatsApp hardening | 2026-06-07 |
+| `feature/tenant-isolation-consents` | 🔵 En PR | Bloque D incremento 3: dominio Consents migrado a `ConsentRepository` (pusheada a origin, PR abierto contra `main`) | 2026-06-07 |
 
 > Las ramas `feature/financial-core-fixes`, `feature/runtime-verification` y `feature/social-channels` ya están integradas en `main` (no borradas localmente).
-> `main` está varios commits adelante de `origin/main` (pendiente `git push`).
+> `main` y sus capas previas están sincronizadas con `origin/main`. El incremento 3 (Consents) viaja por PR, no por merge local.
 
 ---
 
@@ -39,6 +40,7 @@
 | Transporte web SSE→Full (Bloque A) + spec §A.3 | v9 (sin cambio de schema) | ✅ |
 | WhatsApp hardening (Bloque B): recibos de estado, clasificación de errores Graph, ventana 24h, templates, channel_deliveries | v10 | ✅ |
 | Aislamiento de tenant fail-closed (Bloque D, incrementos 1+2): `Persistence\TenantScopedRepository` + guard estático + dominio Leads migrado a repo | v10 (sin cambio de schema) | ✅ |
+| Aislamiento de tenant fail-closed (Bloque D, incremento 3): dominio Consents migrado a `Persistence\ConsentRepository` (ConsentController + ChannelConsentService sin `$wpdb`); allowlist del guard 7→5 | v10 (sin cambio de schema) | ✅ (en PR, pendiente merge) |
 
 ---
 
@@ -46,7 +48,7 @@
 
 | Branch | Tipo | Prioridad | Objetivo |
 |--------|------|-----------|----------|
-| `feature/tenant-isolation-leads-consents` | feature | 🔴 Alta | **Bloque D incrementos 3-5**: migrar Consents, Opportunities y Bots a repos (allowlist del guard → vacía) |
+| `feature/tenant-isolation-opportunities-bots` | feature | 🔴 Alta | **Bloque D incrementos 4-5**: migrar Opportunities y Bots a repos (allowlist del guard → vacía). Consents ya migrado (inc 3, en PR). |
 | `feature/mercadopago-subscriptions` | feature | 🔴 Alta | Webhook MP + activación/suspensión de plan en ARS |
 | `feature/tenant-dashboard-astra` | feature | 🟡 Media | Dashboard tenant con Astra child theme |
 | `feature/crm-webhook` | feature | 🟡 Media | Webhook saliente a CRM externo (HubSpot / Zoho / Pipedrive) |

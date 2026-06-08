@@ -13,6 +13,12 @@ final class MigratorV10Test extends TestCase {
         $GLOBALS['wpdb']->prefix          = 'wp_';
     }
 
+    protected function tearDown(): void {
+        // test_table_name_uses_wpdb_prefix muta el prefix global; restaurarlo evita
+        // contaminar el estado de las clases de test que corren después (orden global).
+        $GLOBALS['wpdb']->prefix = 'wp_';
+    }
+
     /** @return string Concatenación de todo el SQL pasado a dbDelta(). */
     private function invokeCreate( string $method ): string {
         $migrator = new Migrator();

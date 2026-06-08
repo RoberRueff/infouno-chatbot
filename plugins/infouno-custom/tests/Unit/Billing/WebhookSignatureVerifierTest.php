@@ -48,4 +48,20 @@ final class WebhookSignatureVerifierTest extends TestCase {
         $v = new WebhookSignatureVerifier( '', 300 );
         $this->assertFalse( $v->verify( $header, 'req-1', '123', $ts ) );
     }
+
+    public function test_future_dated_ts_rejected_as_replay(): void {
+        // ts 600 s en el futuro respecto a now → fuera de la ventana (otra dirección del abs()).
+        $ts     = 1_000_600;
+        $header = $this->sign( '123', 'req-1', $ts );
+        $v = new WebhookSignatureVerifier( self::SECRET, 300 );
+        $this->assertFalse( $v->verify( $header, 'req-1', '123', 1_000_000 ) );
+    }
+
+    public function test_signature_for_other_resource_rejected(): void {
+        // Firma válida para dataId '123' pero se verifica contra '999' → manifiesto distinto.
+        $ts     = 1_000_000;
+        $header = $this->sign( '123', 'req-1', $ts );
+        $v = new WebhookSignatureVerifier( self::SECRET, 300 );
+        $this->assertFalse( $v->verify( $header, 'req-1', '999', $ts + 10 ) );
+    }
 }
